@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-07
+
+Phase 2. Per-host visibility, vulnerable software, and events for hosts
+enrolling or going quiet. No breaking changes: everything from 0.1.x keeps
+working unchanged, and the new per-host entities appear automatically on
+fleets of 50 hosts or fewer.
+
 ### Added
 
 - **Per-host devices and entities.** Each enrolled host becomes its own device
@@ -108,6 +115,7 @@ First release. Fleet-level monitoring and per-policy compliance, read-only.
   tier, with the drift baseline seeding silently rather than firing an event
   for each of the 23 already-failing policies
 
-[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/breed007/ha-fleetdm/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/breed007/ha-fleetdm/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/breed007/ha-fleetdm/releases/tag/v0.1.0
