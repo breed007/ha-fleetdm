@@ -7,14 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Global policies are now read from `/policies`, with a fallback to the legacy
-  `/global/policies`. Current Fleet servers answer 404 on the old path under
-  `/api/latest`, which left the integration stuck retrying setup. Found by
-  dogfooding against a live Fleet 4.x server; the resolved route is cached so
-  each server is only probed once.
-
 ## [0.1.0] - 2026-08-07
 
 First release. Fleet-level monitoring and per-policy compliance, read-only.
@@ -50,6 +42,13 @@ First release. Fleet-level monitoring and per-policy compliance, read-only.
 - Host counts come from `/host_summary` in a single request per cycle
 - Global policies are paginated explicitly, so a large policy library is not
   silently truncated by a server-side page size default
+- Fleet renamed its global policies route when it dropped "global" from its
+  team terminology. Both spellings are supported: the integration probes
+  `/policies` then `/global/policies` and caches whichever the server answers,
+  so current and older Fleet releases both work
+- Verified against a live Fleet server: 14 hosts, 46 global policies, Free
+  tier, with the drift baseline seeding silently rather than firing an event
+  for each of the 23 already-failing policies
 
 [Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/breed007/ha-fleetdm/releases/tag/v0.1.0
