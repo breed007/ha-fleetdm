@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest something this integration should do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the [roadmap](https://github.com/breed007/ha-fleetdm#roadmap)
+        first — per-host entities, vulnerable software sensors, and team/label
+        filtering are already planned.
+
+        **Out of scope, permanently:** anything that modifies hosts, runs MDM
+        commands, executes scripts, or sends arbitrary SQL to Fleet. This
+        integration is read-only by design. Running *pre-existing saved queries*
+        is a possible future addition, deliberately gated.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation, not the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like it to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: api
+    attributes:
+      label: Which Fleet API data would this need?
+      description: |
+        If you know the endpoint or fields, say so — it makes this much faster
+        to evaluate. Note whether it is Fleet Premium-only.
+
+  - type: input
+    id: fleet-size
+    attributes:
+      label: How many hosts are in your fleet?
+      description: |
+        Genuinely useful for prioritisation, particularly for anything that
+        creates per-host entities.
+      placeholder: "15"

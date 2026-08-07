@@ -1,0 +1,5 @@
+# Pinned to Home Assistant 2026.8.x. The CI matrix in .github/workflows/pytest.yml
+# also runs the previous Home Assistant minor; keep the two in sync when bumping.
+pytest-homeassistant-custom-component==0.13.354
+pytest-cov==7.0.0
+ruff==0.14.2

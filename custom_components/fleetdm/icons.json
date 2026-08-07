@@ -1,0 +1,21 @@
+{
+  "entity": {
+    "sensor": {
+      "hosts_online": { "default": "mdi:laptop" },
+      "hosts_offline": { "default": "mdi:laptop-off" },
+      "hosts_missing": { "default": "mdi:help-network-outline" },
+      "hosts_new": { "default": "mdi:laptop-account" },
+      "hosts_total": { "default": "mdi:server-network" },
+      "policies_failing": { "default": "mdi:shield-alert-outline" }
+    },
+    "binary_sensor": {
+      "compliance": {
+        "default": "mdi:shield-check-outline",
+        "state": { "on": "mdi:shield-alert" }
+      }
+    },
+    "event": {
+      "fleet_events": { "default": "mdi:shield-sync-outline" }
+    }
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Fleet",
+        "description": "Connect Home Assistant to your Fleet server using a read-only API token.",
+        "data": {
+          "url": "Fleet server URL",
+          "api_token": "API token",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "url": "The base URL of your Fleet server, for example https://fleet.example.com",
+          "api_token": "Create a dedicated API-only user with the Observer role (fleetctl user create --api-only) and paste its token here. API-only tokens are not invalidated when you log out of the Fleet web UI.",
+          "verify_ssl": "Turn this off only if your Fleet server uses a self-signed certificate."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate with Fleet",
+        "description": "Fleet has rejected the stored API token for {url}. Enter a new token to reconnect.",
+        "data": {
+          "api_token": "API token"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Fleet",
+        "description": "Update the connection settings for this Fleet server. Use this to rotate the API token before revoking the old one.",
+        "data": {
+          "url": "Fleet server URL",
+          "api_token": "API token",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "url": "Must still point at the same Fleet server.",
+          "api_token": "Paste the replacement API-only user token.",
+          "verify_ssl": "Turn this off only if your Fleet server uses a self-signed certificate."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the Fleet server. Check the URL, that Home Assistant can route to it, and the SSL setting.",
+      "invalid_auth": "Fleet rejected this API token.",
+      "unknown": "Unexpected error. Check the Home Assistant logs for details."
+    },
+    "abort": {
+      "already_configured": "This Fleet server is already configured.",
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "Fleet was reconfigured successfully.",
+      "wrong_server": "That URL points at a different Fleet server. To connect to a different server, add it as a new integration instead."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Fleet options",
+        "description": "Fleet host status and policy counts only refresh as fast as your osquery agents check in, so polling faster than about a minute rarely surfaces anything new.",
+        "data": {
+          "summary_interval": "Update interval",
+          "redact_hostnames_in_diagnostics": "Redact hostnames in diagnostics"
+        },
+        "data_description": {
+          "summary_interval": "How often to poll Fleet for host counts and policy compliance, in seconds.",
+          "redact_hostnames_in_diagnostics": "Replace your Fleet server's hostname in diagnostics downloads. The API token is always redacted."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "hosts_online": { "name": "Hosts online" },
+      "hosts_offline": { "name": "Hosts offline" },
+      "hosts_missing": { "name": "Hosts missing" },
+      "hosts_new": { "name": "Hosts new" },
+      "hosts_total": { "name": "Hosts total" },
+      "policies_failing": { "name": "Policies failing" }
+    },
+    "binary_sensor": {
+      "compliance": { "name": "Compliance" }
+    },
+    "event": {
+      "fleet_events": {
+        "name": "Fleet events",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "policy_newly_failing": "Policy newly failing",
+              "policy_recovered": "Policy recovered",
+              "host_enrolled": "Host enrolled",
+              "host_went_missing": "Host went missing"
+            }
+          }
+        }
+      }
+    }
+  }
+}

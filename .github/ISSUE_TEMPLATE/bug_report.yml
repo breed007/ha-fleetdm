@@ -1,0 +1,110 @@
+name: Bug report
+description: Something is wrong with the integration
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        **Before you file:** if the numbers look wrong but not *impossible*,
+        check the `host_count_updated_at` attribute on the affected policy
+        entity. Fleet recomputes policy host counts on its own schedule, and
+        osquery agents report on theirs — Home Assistant cannot be fresher than
+        Fleet is.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you get instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+
+  - type: input
+    id: integration-version
+    attributes:
+      label: Integration version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.8.0"
+    validations:
+      required: true
+
+  - type: input
+    id: fleet-version
+    attributes:
+      label: Fleet server version
+      description: Shown on the Fleet hub device in Home Assistant, or in Fleet's UI.
+      placeholder: "4.52.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: fleet-tier
+    attributes:
+      label: Fleet licence tier
+      options:
+        - Free
+        - Premium
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: fleet-role
+    attributes:
+      label: Role of the API-only user
+      placeholder: "Observer"
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Settings → Devices & Services → Fleet → ⋮ → Download diagnostics.
+
+        The API token is **always** redacted, and hostnames are redacted by
+        default. Please skim it before attaching, and redact anything else you
+        would rather not publish — policy names are included.
+      render: json
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: |
+        Add this to `configuration.yaml`, restart, and reproduce:
+
+        ```yaml
+        logger:
+          logs:
+            custom_components.fleetdm: debug
+        ```
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have redacted anything sensitive from the output above.
+          required: true
