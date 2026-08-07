@@ -28,6 +28,12 @@ MAX_PAGES = 20
 # differed between releases, so paginate explicitly rather than trusting it.
 POLICIES_PER_PAGE = 100
 
+# Fleet renamed the global policies route as part of dropping "global" from its
+# team terminology. Current servers answer /policies under /api/latest and 404
+# on /global/policies; older servers are the other way round. Probing in this
+# order and caching the winner keeps both working.
+POLICY_PATHS = ("/policies", "/global/policies")
+
 
 class FleetError(Exception):
     """Base error for all Fleet API failures."""
@@ -39,6 +45,14 @@ class FleetConnectionError(FleetError):
 
 class FleetAuthError(FleetError):
     """The API token was rejected (HTTP 401). Triggers reauth."""
+
+
+class FleetNotFoundError(FleetError):
+    """The endpoint does not exist on this Fleet server (HTTP 404).
+
+    Used to detect which of several known route spellings a given Fleet
+    version supports, rather than to signal a hard failure.
+    """
 
 
 class FleetForbiddenError(FleetError):
@@ -152,6 +166,8 @@ class FleetClient:
         self._session = session
         self._base_url = normalize_url(base_url)
         self._token = token
+        # Resolved on the first policies fetch, then reused.
+        self._policies_path: str | None = None
 
     @property
     def base_url(self) -> str:
@@ -178,9 +194,13 @@ class FleetClient:
                         f"Fleet returned {response.status} for {path}; the token's "
                         "role or licence tier does not permit this request"
                     )
+                if response.status == 404:
+                    raise FleetNotFoundError(
+                        f"Fleet has no endpoint at {path} on this server version"
+                    )
                 response.raise_for_status()
                 return await response.json()
-        except (FleetAuthError, FleetForbiddenError):
+        except (FleetAuthError, FleetForbiddenError, FleetNotFoundError):
             raise
         except aiohttp.ClientResponseError as err:
             raise FleetError(f"Fleet returned HTTP {err.status} for {path}") from err
@@ -228,6 +248,33 @@ class FleetClient:
     async def async_get_global_policies(self) -> list[FleetPolicy]:
         """Return all global policies with their pass/fail host counts.
 
+        Tries each known spelling of the policies route until one answers, then
+        remembers it, so a single Fleet version is only probed once.
+        """
+        candidates = (self._policies_path,) if self._policies_path else POLICY_PATHS
+        last_error: FleetNotFoundError | None = None
+
+        for path in candidates:
+            try:
+                policies = await self._async_read_policies(path)
+            except FleetNotFoundError as err:
+                last_error = err
+                _LOGGER.debug("Fleet has no policies endpoint at %s", path)
+                continue
+
+            if self._policies_path != path:
+                self._policies_path = path
+                _LOGGER.debug("Using %s for Fleet global policies", path)
+            return policies
+
+        raise FleetError(
+            "Could not find a policies endpoint on this Fleet server; tried "
+            + ", ".join(POLICY_PATHS)
+        ) from last_error
+
+    async def _async_read_policies(self, path: str) -> list[FleetPolicy]:
+        """Read every page of policies from a specific route.
+
         Paginated explicitly so a large policy library is never silently
         truncated by a server-side default page size.
         """
@@ -235,7 +282,7 @@ class FleetClient:
 
         for page in range(MAX_PAGES):
             data = await self._get(
-                "/global/policies",
+                path,
                 {"page": page, "per_page": POLICIES_PER_PAGE},
             )
             batch = data.get("policies") or []

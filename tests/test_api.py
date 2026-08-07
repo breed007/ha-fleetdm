@@ -9,6 +9,7 @@ from custom_components.fleetdm.api import (
     MAX_PAGES,
     POLICIES_PER_PAGE,
     FleetClient,
+    FleetError,
     FleetHostSummary,
     FleetPolicy,
     normalize_url,
@@ -113,12 +114,12 @@ async def test_policies_paginate(hass, aioclient_mock) -> None:
 
     # Page 0 is full, page 1 is short: the short page ends the loop.
     aioclient_mock.get(
-        f"{API}/global/policies",
+        f"{API}/policies",
         params={"page": "0", "per_page": str(POLICIES_PER_PAGE)},
         json=page(0, POLICIES_PER_PAGE),
     )
     aioclient_mock.get(
-        f"{API}/global/policies",
+        f"{API}/policies",
         params={"page": "1", "per_page": str(POLICIES_PER_PAGE)},
         json=page(POLICIES_PER_PAGE, 5),
     )
@@ -134,7 +135,7 @@ async def test_policies_paginate(hass, aioclient_mock) -> None:
 async def test_policies_pagination_safety_cap(hass, aioclient_mock, caplog) -> None:
     """A server that never returns a short page is stopped at the cap."""
     aioclient_mock.get(
-        f"{API}/global/policies",
+        f"{API}/policies",
         json={
             "policies": [
                 {"id": i, "name": f"Policy {i}"} for i in range(POLICIES_PER_PAGE)
@@ -147,3 +148,41 @@ async def test_policies_pagination_safety_cap(hass, aioclient_mock, caplog) -> N
 
     assert len(policies) == MAX_PAGES * POLICIES_PER_PAGE
     assert "safety cap" in caplog.text
+
+
+async def test_policies_falls_back_to_legacy_path(hass, aioclient_mock) -> None:
+    """An older Fleet that only has /global/policies still works."""
+    aioclient_mock.get(f"{API}/policies", status=404)
+    aioclient_mock.get(
+        f"{API}/global/policies",
+        json={"policies": [{"id": 1, "name": "Gatekeeper enabled"}]},
+    )
+
+    client = FleetClient(async_get_clientsession(hass), BASE_URL, "token")
+    policies = await client.async_get_global_policies()
+
+    assert [p.name for p in policies] == ["Gatekeeper enabled"]
+
+
+async def test_resolved_policy_path_is_cached(hass, aioclient_mock) -> None:
+    """The working route is probed once, not re-probed on every poll."""
+    aioclient_mock.get(f"{API}/policies", status=404)
+    aioclient_mock.get(f"{API}/global/policies", json={"policies": []})
+
+    client = FleetClient(async_get_clientsession(hass), BASE_URL, "token")
+    await client.async_get_global_policies()
+    calls_after_first = len(aioclient_mock.mock_calls)
+
+    await client.async_get_global_policies()
+    # Second fetch is a single request: no repeat probe of the dead route.
+    assert len(aioclient_mock.mock_calls) - calls_after_first == 1
+
+
+async def test_no_policy_endpoint_raises(hass, aioclient_mock) -> None:
+    """If no known route exists, the error names what was tried."""
+    aioclient_mock.get(f"{API}/policies", status=404)
+    aioclient_mock.get(f"{API}/global/policies", status=404)
+
+    client = FleetClient(async_get_clientsession(hass), BASE_URL, "token")
+    with pytest.raises(FleetError, match="Could not find a policies endpoint"):
+        await client.async_get_global_policies()

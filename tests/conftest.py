@@ -101,7 +101,7 @@ def mock_fleet(
     aioclient_mock.get(f"{API}/config", json=config or FREE_CONFIG_RESPONSE)
     aioclient_mock.get(f"{API}/host_summary", json=summary or HOST_SUMMARY_RESPONSE)
     aioclient_mock.get(
-        f"{API}/global/policies",
+        f"{API}/policies",
         json=policies or policies_payload(POLICY_GATEKEEPER, POLICY_BITLOCKER),
     )
 

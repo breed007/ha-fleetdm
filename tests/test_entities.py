@@ -207,7 +207,7 @@ async def test_forbidden_config_endpoint_degrades_to_free(
         },
     )
     aioclient_mock.get(
-        f"{API}/global/policies",
+        f"{API}/policies",
         json=policies_payload(failing(POLICY_GATEKEEPER, 1)),
     )
     mock_config_entry.add_to_hass(hass)
@@ -269,7 +269,7 @@ async def test_coordinator_recovers_after_failure(
 
     aioclient_mock.clear_requests()
     aioclient_mock.get(f"{API}/host_summary", exc=TimeoutError())
-    aioclient_mock.get(f"{API}/global/policies", exc=TimeoutError())
+    aioclient_mock.get(f"{API}/policies", exc=TimeoutError())
     await entry.runtime_data.summary.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get("sensor.fleet_hosts_online").state == "unavailable"
