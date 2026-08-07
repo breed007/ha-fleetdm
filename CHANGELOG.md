@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-07
+
+Icon and documentation only. No functional change to the integration.
+
+### Added
+
+- hDPI `icon@2x.png` and `logo@2x.png`, which were missing from the brand folder
+  so high-density displays fell back to the smaller images
+- Screenshots in the README: the setup dialog, and the device page showing host
+  counts beside per-policy compliance sensors
+
 ### Changed
 
 - The icon and logo now ship only in `custom_components/fleetdm/brand/`, which
@@ -14,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   integration icons into its brands repository, so the duplicate copy staged for
   that submission has been removed. Users on Home Assistant 2025.2–2026.2 see the
   generic placeholder icon; this is cosmetic and closes as users upgrade.
+
+### Documentation
+
+- Recommend configuring Fleet by hostname rather than IP. A certificate issued
+  for the hostname fails verification when connecting by IP, and the tempting
+  fix is to disable verification rather than use the name the certificate is for.
 
 ## [0.1.0] - 2026-08-07
 
@@ -58,5 +75,6 @@ First release. Fleet-level monitoring and per-policy compliance, read-only.
   tier, with the drift baseline seeding silently rather than firing an event
   for each of the 23 already-failing policies
 
-[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/breed007/ha-fleetdm/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/breed007/ha-fleetdm/releases/tag/v0.1.0
