@@ -5,7 +5,7 @@ Two separate things, in this order:
 1. **Ship a release** so people can install via a custom repository. Works
    immediately, no approval needed.
 2. **Get into the HACS default list** so people can find it without adding a
-   custom repository. Needs a PR to `hacs/default`, and a brands PR for the icon.
+   custom repository. Needs a PR to `hacs/default`.
 
 ---
 
@@ -68,7 +68,7 @@ Requirements, from [hacs.xyz](https://hacs.xyz/docs/publish/include/):
 - [ ] `hacs.json` present with at least a `name`
 - [ ] Valid `manifest.json`
 - [ ] Exactly one integration under `custom_components/`
-- [ ] An icon exists — via the brands PR below
+- [x] An icon exists — shipped in `custom_components/fleetdm/brand/`
 
 Then:
 
@@ -79,12 +79,18 @@ Then:
 4. Open the PR from your personal account (org accounts block maintainer edits)
    and fill in the template accurately
 
-## Brands PR
+## Brand icon — nothing to submit
 
-Required for the integration to have an icon in Home Assistant and HACS. See
-[brands/README.md](../brands/README.md) — the assets are generated and ready,
-though you may want to replace the artwork with something designed before it
-becomes the project's public face.
+Home Assistant **no longer accepts custom integration icons** into the
+home-assistant/brands repository. Since 2026.3, integrations ship their own from
+`custom_components/fleetdm/brand/`, which this one does.
+
+We confirmed this the hard way: [brands#10930](https://github.com/home-assistant/brands/pull/10930)
+passed every CI check and was still closed as out of policy. Don't re-submit.
+
+Users on Home Assistant 2025.2–2026.2 see a generic placeholder icon, since the
+`brand/` folder only works on 2026.3+. Cosmetic only. See
+[BRAND_ASSETS.md](BRAND_ASSETS.md).
 
 ## After it lands
 

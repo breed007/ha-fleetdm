@@ -1,22 +1,27 @@
 #!/usr/bin/env python3
-"""Generate home-assistant/brands assets for the Fleet integration.
+"""Generate the brand images the integration ships in its own brand/ folder.
 
-Produces trimmed, square PNGs that satisfy the brands repository rules:
+Since Home Assistant 2026.3 a custom integration provides its own icons from
+``custom_components/<domain>/brand/``, and Home Assistant no longer accepts
+custom integration icons into the home-assistant/brands repository. This writes
+that folder directly.
+
+Produces trimmed PNGs at the sizes Home Assistant expects:
 
     icon.png      256x256
     icon@2x.png   512x512
     logo.png      shortest side between 128 and 256
-    logo@2x.png   twice the logo
+    logo@2x.png   shortest side between 256 and 512
 
 The mark is a shield (compliance) carrying a 3x3 grid of host dots. Six dots are
 Fleet green; the three lower-right dots — the positions Fleet's own dot-grid
 logo leaves empty — are white.
 
-It does not use Home Assistant branding, which the brands repository forbids for
-custom integrations.
+It does not use Home Assistant branding, which would wrongly imply this is an
+official integration.
 
 Usage:
-    python scripts/generate_brand_assets.py [--out brands/custom_integrations/fleetdm]
+    python scripts/generate_brand_assets.py
 
 Requires Pillow, which is not a runtime dependency of the integration:
     pip install Pillow
@@ -25,7 +30,6 @@ Requires Pillow, which is not a runtime dependency of the integration:
 from __future__ import annotations
 
 import argparse
-import shutil
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -174,28 +178,19 @@ def main() -> None:
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path("brands/custom_integrations/fleetdm"),
-        help="Output directory (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--mirror",
-        type=Path,
         default=Path("custom_components/fleetdm/brand"),
         help=(
-            "Also copy the assets here. This is the in-integration brand folder "
-            "Home Assistant 2026.3+ reads directly, and the path the HACS "
-            "validation action checks (default: %(default)s)"
+            "Output directory. This is the brand folder Home Assistant 2026.3+ "
+            "reads, and the path the HACS validation action checks "
+            "(default: %(default)s)"
         ),
     )
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
-    written: list[Path] = []
-
     for name, size in (("icon.png", 256), ("icon@2x.png", 512)):
         path = args.out / name
         render_icon(size).save(path, "PNG", optimize=True)
-        written.append(path)
         print(f"wrote {path} ({size}x{size})")
 
     for name, height in (("logo.png", 256), ("logo@2x.png", 512)):
@@ -205,16 +200,7 @@ def main() -> None:
             break
         path = args.out / name
         logo.save(path, "PNG", optimize=True)
-        written.append(path)
         print(f"wrote {path} ({logo.width}x{logo.height})")
-
-    # Mirror rather than document a manual copy step: the two copies drifting
-    # apart is exactly the kind of thing nobody notices until it ships.
-    if args.mirror:
-        args.mirror.mkdir(parents=True, exist_ok=True)
-        for path in written:
-            shutil.copy2(path, args.mirror / path.name)
-        print(f"mirrored {len(written)} files to {args.mirror}")
 
 
 if __name__ == "__main__":

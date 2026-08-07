@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The icon and logo now ship only in `custom_components/fleetdm/brand/`, which
+  Home Assistant 2026.3+ reads directly. Home Assistant no longer accepts custom
+  integration icons into its brands repository, so the duplicate copy staged for
+  that submission has been removed. Users on Home Assistant 2025.2–2026.2 see the
+  generic placeholder icon; this is cosmetic and closes as users upgrade.
+
 ## [0.1.0] - 2026-08-07
 
 First release. Fleet-level monitoring and per-policy compliance, read-only.
