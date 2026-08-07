@@ -96,4 +96,55 @@ async def async_get_config_entry_diagnostics(
             for event in data.events
         ]
 
+    inventory = entry.runtime_data.inventory
+    payload["inventory"] = {
+        "last_update_success": inventory.last_update_success,
+        "update_interval_seconds": (
+            inventory.update_interval.total_seconds()
+            if inventory.update_interval
+            else None
+        ),
+        "missing_after_hours": inventory.missing_after.total_seconds() / 3600,
+    }
+
+    if (inv := inventory.data) is not None:
+        payload["inventory"]["host_count"] = len(inv.hosts)
+        # Hosts are the one place diagnostics carry genuinely identifying data:
+        # machine names and LAN addresses. Redaction is on by default for
+        # exactly this, and it replaces rather than omits so the shape of a bug
+        # report stays readable.
+        payload["hosts"] = [
+            {
+                "id": host.id,
+                "name": REDACTED if redact_hostnames else host.display_name,
+                "hostname": REDACTED if redact_hostnames else host.hostname,
+                "primary_ip": REDACTED if redact_hostnames else host.primary_ip,
+                "platform": host.platform,
+                "os_version": host.os_version,
+                "status": host.status,
+                "failing_policies_count": host.failing_policies_count,
+                "seen_time": host.seen_time.isoformat() if host.seen_time else None,
+            }
+            for host in inv.hosts
+        ]
+        if inv.vulnerable is not None:
+            payload["vulnerable_software"] = {
+                "count": inv.vulnerable.count,
+                "counts_updated_at": (
+                    inv.vulnerable.counts_updated_at.isoformat()
+                    if inv.vulnerable.counts_updated_at
+                    else None
+                ),
+                # Software titles describe what is installed, not who runs it,
+                # so they are kept even when hostnames are redacted.
+                "most_widespread": [
+                    {
+                        "name": title.name,
+                        "hosts_count": title.hosts_count,
+                        "cve_count": title.cve_count,
+                    }
+                    for title in inv.vulnerable.worst
+                ],
+            }
+
     return payload

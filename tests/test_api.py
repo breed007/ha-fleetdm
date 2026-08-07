@@ -186,3 +186,70 @@ async def test_no_policy_endpoint_raises(hass, aioclient_mock) -> None:
     client = FleetClient(async_get_clientsession(hass), BASE_URL, "token")
     with pytest.raises(FleetError, match="Could not find a policies endpoint"):
         await client.async_get_global_policies()
+
+
+async def test_hosts_paginate(hass, aioclient_mock) -> None:
+    """A fleet larger than one page is read in full."""
+    from custom_components.fleetdm.api import HOSTS_PER_PAGE
+
+    def page(start: int, count: int) -> dict:
+        return {"hosts": [{"id": start + i} for i in range(count)]}
+
+    aioclient_mock.get(
+        f"{API}/hosts",
+        params={"page": "0", "per_page": str(HOSTS_PER_PAGE)},
+        json=page(0, HOSTS_PER_PAGE),
+    )
+    aioclient_mock.get(
+        f"{API}/hosts",
+        params={"page": "1", "per_page": str(HOSTS_PER_PAGE)},
+        json=page(HOSTS_PER_PAGE, 7),
+    )
+
+    client = FleetClient(async_get_clientsession(hass), BASE_URL, "token")
+    hosts = await client.async_get_hosts()
+
+    assert len(hosts) == HOSTS_PER_PAGE + 7
+    assert hosts[-1].id == HOSTS_PER_PAGE + 6
+
+
+async def test_activities_stop_at_watermark(hass, aioclient_mock) -> None:
+    """Only activities newer than the watermark are returned."""
+    aioclient_mock.get(
+        f"{API}/activities",
+        json={
+            "activities": [
+                {"id": 30, "type": "fleet_enrolled", "details": {}},
+                {"id": 29, "type": "user_logged_in", "details": {}},
+                {"id": 28, "type": "fleet_enrolled", "details": {}},
+            ]
+        },
+    )
+
+    client = FleetClient(async_get_clientsession(hass), BASE_URL, "token")
+    fresh = await client.async_get_activities(after_id=28)
+
+    assert [a.id for a in fresh] == [30, 29]
+
+
+async def test_activities_first_read_takes_one_page(hass, aioclient_mock) -> None:
+    """With no watermark, one page is enough to establish one."""
+    from custom_components.fleetdm.api import ACTIVITIES_PER_PAGE
+
+    aioclient_mock.get(
+        f"{API}/activities",
+        json={
+            "activities": [
+                {"id": i, "type": "user_logged_in", "details": {}}
+                for i in range(ACTIVITIES_PER_PAGE, 0, -1)
+            ]
+        },
+    )
+
+    client = FleetClient(async_get_clientsession(hass), BASE_URL, "token")
+    first = await client.async_get_activities(after_id=None)
+
+    # A full page would normally mean "keep reading"; without a watermark it
+    # must stop anyway rather than walking the entire audit history.
+    assert len(first) == ACTIVITIES_PER_PAGE
+    assert len(aioclient_mock.mock_calls) == 1

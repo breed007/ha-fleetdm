@@ -12,9 +12,13 @@ from custom_components.fleetdm.const import DOMAIN
 from .conftest import (
     API,
     FREE_CONFIG_RESPONSE,
+    HOST_LAPTOP,
     POLICY_BITLOCKER,
     POLICY_GATEKEEPER,
     PREMIUM_CONFIG_RESPONSE,
+    VULNERABLE_SOFTWARE_RESPONSE,
+    activities_payload,
+    hosts_payload,
     policies_payload,
 )
 from .test_drift import failing, poll, setup_with
@@ -210,6 +214,9 @@ async def test_forbidden_config_endpoint_degrades_to_free(
         f"{API}/policies",
         json=policies_payload(failing(POLICY_GATEKEEPER, 1)),
     )
+    aioclient_mock.get(f"{API}/hosts", json=hosts_payload(HOST_LAPTOP))
+    aioclient_mock.get(f"{API}/activities", json=activities_payload())
+    aioclient_mock.get(f"{API}/software/titles", json=VULNERABLE_SOFTWARE_RESPONSE)
     mock_config_entry.add_to_hass(hass)
 
     assert await hass.config_entries.async_setup(mock_config_entry.entry_id)

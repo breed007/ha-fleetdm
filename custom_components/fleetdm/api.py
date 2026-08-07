@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
@@ -27,6 +28,37 @@ MAX_PAGES = 20
 # Fleet's default page size is not documented for every list endpoint and has
 # differed between releases, so paginate explicitly rather than trusting it.
 POLICIES_PER_PAGE = 100
+HOSTS_PER_PAGE = 100
+
+# How many vulnerable software titles to keep for the sensor's attributes.
+# Fleet can order server-side by affected host count, so this is the genuinely
+# worst N rather than the first N that happened to be returned.
+VULNERABLE_TITLES_SAMPLE = 10
+
+# Activities come back newest-first, so a modest page is enough to catch up
+# between polls; the watermark stops us reading further back than needed.
+ACTIVITIES_PER_PAGE = 100
+
+# Fleet writes this zero value for timestamps that are simply unset.
+_ZERO_TIME_YEAR = 1970
+
+
+def parse_fleet_time(value: Any) -> datetime | None:
+    """Parse a Fleet timestamp, treating unset and unparseable values as None.
+
+    Fleet writes ``0001-01-01T00:00:00Z`` rather than null for timestamps it has
+    no value for, which would otherwise surface as a date in the year 1.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return None if parsed.year < _ZERO_TIME_YEAR else parsed
+
 
 # Fleet renamed the global policies route as part of dropping "global" from its
 # team terminology. Current servers answer /policies under /api/latest and 404
@@ -148,6 +180,140 @@ class FleetHostSummary:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class FleetHost:
+    """A single enrolled host, as returned by the host list endpoint.
+
+    Built from ``/hosts`` rather than ``/hosts/{id}`` on purpose: the list
+    already carries everything the per-host entities need, including
+    ``issues.failing_policies_count``, so a fleet of any size costs one
+    paginated read instead of a detail request per host.
+    """
+
+    id: int
+    display_name: str
+    hostname: str
+    platform: str
+    os_version: str
+    status: str
+    primary_ip: str
+    hardware_model: str
+    osquery_version: str
+    failing_policies_count: int
+    seen_time: datetime | None
+    last_restarted_at: datetime | None
+    disk_gigs_available: float | None
+    disk_percent_available: int | None
+
+    @property
+    def is_online(self) -> bool:
+        """Whether Fleet currently considers this host online."""
+        return self.status == "online"
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> FleetHost:
+        """Build a host from a Fleet API payload, tolerating absent fields."""
+        host_id = int(data["id"])
+        # Fleet's own display preference, falling back the way its UI does.
+        display = (
+            data.get("display_name")
+            or data.get("computer_name")
+            or data.get("hostname")
+            or f"Host {host_id}"
+        )
+        issues = data.get("issues") or {}
+        return cls(
+            id=host_id,
+            display_name=str(display),
+            hostname=str(data.get("hostname") or ""),
+            platform=str(data.get("platform") or ""),
+            os_version=str(data.get("os_version") or ""),
+            status=str(data.get("status") or ""),
+            primary_ip=str(data.get("primary_ip") or ""),
+            hardware_model=str(data.get("hardware_model") or ""),
+            osquery_version=str(data.get("osquery_version") or ""),
+            failing_policies_count=int(issues.get("failing_policies_count") or 0),
+            seen_time=parse_fleet_time(data.get("seen_time")),
+            # Fleet reports uptime as a duration, but also gives the boot time
+            # directly. The timestamp is what a Home Assistant sensor wants.
+            last_restarted_at=parse_fleet_time(data.get("last_restarted_at")),
+            disk_gigs_available=_opt_float(data.get("gigs_disk_space_available")),
+            disk_percent_available=_opt_int(data.get("percent_disk_space_available")),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FleetSoftwareTitle:
+    """A software title with known vulnerabilities."""
+
+    id: int
+    name: str
+    source: str
+    hosts_count: int
+    cve_count: int
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> FleetSoftwareTitle:
+        """Build a title, counting CVEs across all of its versions."""
+        cves: set[str] = set()
+        for version in data.get("versions") or []:
+            for cve in version.get("vulnerabilities") or []:
+                if isinstance(cve, str):
+                    cves.add(cve)
+        return cls(
+            id=int(data["id"]),
+            name=str(data.get("display_name") or data.get("name") or ""),
+            source=str(data.get("source") or ""),
+            hosts_count=int(data.get("hosts_count") or 0),
+            cve_count=len(cves),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FleetVulnerableSoftware:
+    """The vulnerable-software summary the sensor is built from."""
+
+    count: int
+    counts_updated_at: datetime | None
+    worst: list[FleetSoftwareTitle]
+
+
+@dataclass(frozen=True, slots=True)
+class FleetActivity:
+    """One entry from Fleet's audit/activity feed."""
+
+    id: int
+    type: str
+    created_at: datetime | None
+    details: dict[str, Any]
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> FleetActivity:
+        """Build an activity from a Fleet API payload."""
+        return cls(
+            id=int(data["id"]),
+            type=str(data.get("type") or ""),
+            created_at=parse_fleet_time(data.get("created_at")),
+            details=data.get("details") or {},
+        )
+
+
+def _opt_float(value: Any) -> float | None:
+    """Coerce to float, or None when Fleet has no value."""
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _opt_int(value: Any) -> int | None:
+    """Coerce to int, or None when Fleet has no value."""
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 class FleetClient:
     """Minimal read-only Fleet API client."""
 
@@ -173,6 +339,10 @@ class FleetClient:
     def base_url(self) -> str:
         """The normalised Fleet base URL."""
         return self._base_url
+
+    def host_page_url(self, host_id: int) -> str:
+        """Deep link to a host's page in the Fleet UI."""
+        return f"{self._base_url}/hosts/{host_id}"
 
     async def _get(
         self, path: str, params: dict[str, Any] | None = None
@@ -299,3 +469,91 @@ class FleetClient:
             )
 
         return policies
+
+    async def async_get_hosts(self) -> list[FleetHost]:
+        """Return every enrolled host.
+
+        This is the expensive call in the integration, which is why it lives on
+        the slower inventory coordinator rather than the summary one.
+        """
+        hosts: list[FleetHost] = []
+
+        for page in range(MAX_PAGES):
+            data = await self._get("/hosts", {"page": page, "per_page": HOSTS_PER_PAGE})
+            batch = data.get("hosts") or []
+            hosts.extend(FleetHost.from_json(host) for host in batch)
+            if len(batch) < HOSTS_PER_PAGE:
+                break
+        else:
+            _LOGGER.warning(
+                "Stopped reading hosts at the %d page safety cap (%d hosts read). "
+                "Some hosts will be missing from Home Assistant",
+                MAX_PAGES,
+                len(hosts),
+            )
+
+        return hosts
+
+    async def async_get_vulnerable_software(self) -> FleetVulnerableSoftware:
+        """Return the vulnerable software summary.
+
+        A single request: Fleet reports the exact total in ``count`` and can
+        order server-side, so the sample really is the worst titles by affected
+        host count rather than whichever happened to come back first.
+        """
+        data = await self._get(
+            "/software/titles",
+            {
+                "vulnerable": "true",
+                "per_page": VULNERABLE_TITLES_SAMPLE,
+                "order_key": "hosts_count",
+                "order_direction": "desc",
+            },
+        )
+        return FleetVulnerableSoftware(
+            count=int(data.get("count") or 0),
+            counts_updated_at=parse_fleet_time(data.get("counts_updated_at")),
+            worst=[
+                FleetSoftwareTitle.from_json(title)
+                for title in (data.get("software_titles") or [])
+            ],
+        )
+
+    async def async_get_activities(
+        self, after_id: int | None = None
+    ) -> list[FleetActivity]:
+        """Return activities newer than ``after_id``, newest first.
+
+        Fleet returns this feed newest-first, so the watermark lets us stop as
+        soon as we reach something already seen instead of reading the whole
+        audit history every poll. With no watermark yet, one page is enough to
+        establish one.
+        """
+        collected: list[FleetActivity] = []
+
+        for page in range(MAX_PAGES):
+            data = await self._get(
+                "/activities", {"page": page, "per_page": ACTIVITIES_PER_PAGE}
+            )
+            batch = data.get("activities") or []
+            if not batch:
+                break
+
+            reached_watermark = False
+            for item in batch:
+                activity = FleetActivity.from_json(item)
+                if after_id is not None and activity.id <= after_id:
+                    reached_watermark = True
+                    break
+                collected.append(activity)
+
+            # A short page means the feed is exhausted. No watermark means this
+            # is the first read, and one page is all we need to set one.
+            if (
+                reached_watermark
+                or after_id is None
+                or len(batch) < ACTIVITIES_PER_PAGE
+            ):
+                break
+
+        return collected

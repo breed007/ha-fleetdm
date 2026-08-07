@@ -1,21 +1,55 @@
 {
   "entity": {
     "sensor": {
-      "hosts_online": { "default": "mdi:laptop" },
-      "hosts_offline": { "default": "mdi:laptop-off" },
-      "hosts_missing": { "default": "mdi:help-network-outline" },
-      "hosts_new": { "default": "mdi:laptop-account" },
-      "hosts_total": { "default": "mdi:server-network" },
-      "policies_failing": { "default": "mdi:shield-alert-outline" }
+      "hosts_online": {
+        "default": "mdi:laptop"
+      },
+      "hosts_offline": {
+        "default": "mdi:laptop-off"
+      },
+      "hosts_missing": {
+        "default": "mdi:help-network-outline"
+      },
+      "hosts_new": {
+        "default": "mdi:laptop-account"
+      },
+      "hosts_total": {
+        "default": "mdi:server-network"
+      },
+      "policies_failing": {
+        "default": "mdi:shield-alert-outline"
+      },
+      "vulnerable_software": {
+        "default": "mdi:package-variant-closed-remove"
+      },
+      "host_failing_policies": {
+        "default": "mdi:shield-alert-outline"
+      },
+      "host_last_restarted": {
+        "default": "mdi:restart"
+      }
     },
     "binary_sensor": {
       "compliance": {
         "default": "mdi:shield-check-outline",
-        "state": { "on": "mdi:shield-alert" }
+        "state": {
+          "on": "mdi:shield-alert"
+        }
+      },
+      "host_online": {
+        "default": "mdi:laptop",
+        "state": {
+          "off": "mdi:laptop-off"
+        }
+      },
+      "host_missing": {
+        "default": "mdi:map-marker-question-outline"
       }
     },
     "event": {
-      "fleet_events": { "default": "mdi:shield-sync-outline" }
+      "fleet_events": {
+        "default": "mdi:shield-sync-outline"
+      }
     }
   }
 }
