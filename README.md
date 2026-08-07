@@ -42,6 +42,11 @@ Every policy entity carries `passing_host_count`, `failing_host_count`,
 All entities hang off a single **Fleet** hub device whose `configuration_url`
 links straight back to your Fleet server.
 
+<img src="docs/images/device-page.png" alt="The Fleet device page in Home Assistant, showing host counts and per-policy compliance sensors" width="720">
+
+*A real 14-host fleet: host counts alongside one problem sensor per global
+policy, each named after the policy in Fleet.*
+
 ---
 
 ## Installation
@@ -107,11 +112,17 @@ silently going stale.
 
 ## Configuration
 
+<img src="docs/images/config-flow.png" alt="The Fleet setup dialog in Home Assistant, with fields for server URL, API token and SSL verification" width="480">
+
 | Field | Notes |
 |---|---|
 | **Fleet server URL** | e.g. `https://fleet.example.com`. Trailing slashes and a missing scheme are normalised, so you cannot accidentally add the same server twice |
 | **API token** | The API-only user token from above |
 | **Verify SSL certificate** | Leave on unless your Fleet server uses a self-signed certificate |
+
+If Fleet is reachable by both hostname and IP, **use the hostname**. A
+certificate issued for the hostname will fail verification when you connect by
+IP, and turning verification off to work around that is the wrong fix.
 
 ### Options
 
