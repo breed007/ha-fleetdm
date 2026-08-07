@@ -63,5 +63,11 @@ EVENT_TYPES: Final = [
 # happened while Home Assistant was down.
 STORAGE_VERSION: Final = 1
 STORAGE_KEY_TEMPLATE: Final = f"{DOMAIN}.drift.{{entry_id}}"
+STORAGE_KEY_INVENTORY_TEMPLATE: Final = f"{DOMAIN}.inventory.{{entry_id}}"
+
+# Fleet's activity type for a host enrolling. The spec for this integration
+# assumed "host_enrolled"; a live 4.x server actually emits "fleet_enrolled".
+# Both are accepted so the event works across Fleet versions.
+ACTIVITY_TYPES_HOST_ENROLLED: Final = frozenset({"fleet_enrolled", "host_enrolled"})
 
 MANUFACTURER: Final = "Fleet Device Management"

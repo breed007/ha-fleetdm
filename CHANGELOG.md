@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-host devices and entities.** Each enrolled host becomes its own device
+  linked to the Fleet hub, with online and missing binary sensors, a failing
+  policy count, and a boot-time sensor (disabled by default). Created
+  automatically for fleets of 50 hosts or fewer; above that they are opt-in, so
+  a large fleet cannot produce thousands of entities by surprise.
+- **`sensor.fleet_vulnerable_software`** — the number of software titles with
+  known CVEs, with the most widespread titles as an attribute. Deliberately
+  carries no severity: CVSS and EPSS are Fleet Premium fields, and inventing a
+  severity from the CVE count would be worse than omitting it.
+- **`fleetdm_host_enrolled` and `fleetdm_host_missing` events**, alongside the
+  existing policy drift events and on the same event entity. Both follow the
+  same rules: nothing fires at setup, one event per transition, and no
+  duplicates or losses across a restart.
+- Options for the inventory interval, per-host entities, the missing threshold
+  and the vulnerable software sensor. Phase 1 deliberately shipped only the
+  options it honoured; these now control real behaviour.
+- A second, slower "inventory" coordinator for the host list, vulnerable
+  software and activity feed, keeping the expensive calls off the fast cycle.
+
+### Notes
+
+- Fleet's host enrolment activity is `fleet_enrolled`, not the `host_enrolled`
+  this project's own spec assumed. Both are accepted so the event works across
+  Fleet versions.
+- Per-host data comes from the `/hosts` list, which already carries
+  `issues.failing_policies_count`. No per-host detail request is made, so a
+  large fleet costs one paginated read rather than a request per host.
+- Diagnostics now contain host names and IP addresses. Hostname redaction is on
+  by default and covers them; software titles are kept, since they describe what
+  is installed rather than who runs it.
+
 ## [0.1.1] - 2026-08-07
 
 Icon and documentation only. No functional change to the integration.

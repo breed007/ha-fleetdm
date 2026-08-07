@@ -15,9 +15,9 @@ osquery-based device management platform. It is read-only by design.
 **Requires Home Assistant 2025.2.0 or later.** CI tests against the two most
 recent Home Assistant releases plus that floor.
 
-> **Status: Phase 1.** Fleet-level counts, per-policy compliance entities, and
-> compliance drift events. Per-host devices and vulnerable-software sensors land
-> in Phase 2 — see [Roadmap](#roadmap).
+> **Status: Phase 2.** Fleet-level counts, per-policy compliance, per-host
+> devices, vulnerable software, and events for compliance drift, host enrolment
+> and hosts going missing. See [Roadmap](#roadmap) for what's next.
 
 ---
 
@@ -34,7 +34,25 @@ recent Home Assistant releases plus that floor.
 | `binary_sensor.fleet_compliance` | binary_sensor (`problem`) | Your headline "is anything wrong" sensor — see [Free vs Premium](#free-vs-premium) |
 | `binary_sensor.fleet_<policy_name>` | binary_sensor (`problem`) | One per global policy. `on` = at least one host failing |
 | `sensor.fleet_<policy_name>_failing_hosts` | sensor | Failing host count per policy, for graphing. **Disabled by default** |
-| `event.fleet_fleet_events` | event | Timeline of compliance transitions |
+| `sensor.fleet_vulnerable_software` | sensor | Software titles with known CVEs. Attribute lists the most widespread |
+| `event.fleet_fleet_events` | event | Timeline of compliance and host events |
+
+### Per host
+
+Each enrolled host becomes its own device, linked to the Fleet hub, with a
+`configuration_url` that opens that host in Fleet.
+
+| Entity | Type | What it tells you |
+|---|---|---|
+| `binary_sensor.<host>_online` | binary_sensor (`connectivity`) | Whether Fleet has heard from it recently |
+| `binary_sensor.<host>_missing` | binary_sensor (`problem`) | Unseen longer than your configured window |
+| `sensor.<host>_failing_policies` | sensor | How many policies this host fails |
+| `sensor.<host>_last_restarted` | sensor (`timestamp`) | Boot time. **Disabled by default** |
+
+Per-host entities are created automatically for fleets of **50 hosts or fewer**.
+Above that they are off until you turn them on, so adding the integration to a
+large fleet cannot create thousands of entities by surprise. Either way the
+choice is yours in the options.
 
 Every policy entity carries `passing_host_count`, `failing_host_count`,
 `critical`, `platform`, `resolution` and `host_count_updated_at` as attributes.
@@ -83,13 +101,14 @@ web UI, which is exactly what you want for an unattended integration.
 
 | Role | Works? | Notes |
 |---|---|---|
-| **Observer** | ✅ **Recommended** | Everything in Phase 1 works. This is all the integration needs |
+| **Observer** | ✅ **Recommended** | Everything works. This is all the integration needs |
 | Observer+ | ✅ | No additional benefit for this integration |
 | Maintainer / Admin | ✅ | **Unnecessary.** Do not use — it grants host-modifying and script-execution rights this integration never exercises |
 
-The integration issues `GET` requests only, against four endpoints:
-`/version`, `/config`, `/host_summary`, and `/global/policies`. It has no code
-path that writes to Fleet, runs queries, or touches hosts.
+The integration issues `GET` requests only, against these endpoints:
+`/version`, `/config`, `/host_summary`, the policies route, `/hosts`,
+`/software/titles` and `/activities`. It has no code path that writes to Fleet,
+runs queries, or touches hosts.
 
 If your Observer token cannot read `/config` (used only to detect your licence
 tier), the integration logs one informational message and continues in Free-tier
@@ -130,7 +149,11 @@ IP, and turning verification off to work around that is the wrong fix.
 
 | Option | Default | Notes |
 |---|---|---|
-| Update interval | 60 s | How often to poll. Range 30–3600 s |
+| Update interval | 60 s | Host counts and policy compliance. Range 30–3600 s |
+| Inventory update interval | 300 s | Host list and vulnerable software — the expensive call. Range 60–86400 s |
+| Create entities for each host | auto | On for ≤ 50 hosts. Set it explicitly to override |
+| Treat a host as missing after | 24 h | Independent of Fleet's own 30-day missing bucket |
+| Vulnerable software sensor | on | Turn off to skip the software query entirely |
 | Redact hostnames in diagnostics | on | See [Diagnostics](#diagnostics) |
 
 ---
@@ -166,7 +189,8 @@ per poll.
 
 Two surfaces, both fired together:
 
-- **Bus events** — `fleetdm_policy_failing` and `fleetdm_policy_recovered`.
+- **Bus events** — `fleetdm_policy_failing`, `fleetdm_policy_recovered`,
+  `fleetdm_host_enrolled` and `fleetdm_host_missing`.
   **Use these for automations.** Each carries a full payload.
 - **`event.fleet_fleet_events`** — a UI/history timeline. Because an event
   entity holds one event at a time, prefer the bus events when several policies
@@ -200,6 +224,11 @@ host_count_updated_at: "2025-01-20T15:23:57Z"
 - **Deleting a failing policy is not a recovery.** It is dropped silently rather
   than firing a misleading "recovered" event.
 
+**Host events follow the same rules.** Adding the integration does not fire an
+enrolment event for every host already in the activity feed, nor a missing event
+for every host that is already stale. A host deleted from Fleet is treated as
+gone, not as newly missing.
+
 ---
 
 ## Example automations
@@ -232,46 +261,48 @@ automation:
           color_name: red
 ```
 
-### 2. A host has gone missing
+### 2. A specific host has gone missing
 
-Fleet marks a host `missing` after 30 days unseen. For a faster warning, watch
-the offline count instead — a laptop that is dead, lost, or has had its agent
-disabled shows up there first.
+Fires once, naming the host, when it has not checked in for longer than your
+configured window. Far faster than Fleet's own 30-day `missing` bucket, which is
+too slow to notice a laptop that is lost, dead, or has had its agent disabled.
 
 ```yaml
 automation:
   - alias: "Fleet: host missing"
     trigger:
-      - platform: numeric_state
-        entity_id: sensor.fleet_hosts_missing
-        above: 0
-        for: "01:00:00"
+      - platform: event
+        event_type: fleetdm_host_missing
     action:
       - service: notify.mobile_app_my_phone
         data:
-          title: "Fleet: host missing"
+          title: "Fleet: {{ trigger.event.data.host_name }} unseen"
           message: >-
-            {{ states('sensor.fleet_hosts_missing') }} host(s) unseen for 30+ days.
+            No check-in for {{ trigger.event.data.unseen_hours }}h
+            ({{ trigger.event.data.platform }}, last seen
+            {{ trigger.event.data.last_seen }}).
+          data:
+            importance: high
 ```
 
 ### 3. A new device enrolled
 
-Fleet counts a host as `new` for its first 24 hours. Expected during
+Fires once per enrolment, with the host's name and serial. Expected during
 provisioning — worth a look otherwise.
 
 ```yaml
 automation:
   - alias: "Fleet: new enrollment"
     trigger:
-      - platform: numeric_state
-        entity_id: sensor.fleet_hosts_new
-        above: 0
+      - platform: event
+        event_type: fleetdm_host_enrolled
     action:
       - service: notify.mobile_app_my_phone
         data:
           title: "Fleet: new host enrolled"
           message: >-
-            {{ states('sensor.fleet_hosts_new') }} host(s) enrolled in the last 24h.
+            {{ trigger.event.data.host_name }}
+            (serial {{ trigger.event.data.host_serial }}) just enrolled.
 ```
 
 ### Bonus: everything is fine again
@@ -328,12 +359,16 @@ Per-policy binary sensors behave identically on both tiers.
 
 ## Roadmap
 
-**Phase 1 (this release)** — config flow with reauth, fleet-level sensors,
-per-policy compliance entities, compliance drift events, diagnostics.
+**Phase 1** — config flow with reauth, fleet-level sensors, per-policy
+compliance entities, compliance drift events, diagnostics.
 
-**Phase 2** — per-host devices and entities (with opt-in gating above ~50 hosts),
-vulnerable software sensors, `host_enrolled` and `host_went_missing` events from
-the activities feed, team/label filtering.
+**Phase 2 (current)** — per-host devices and entities with size gating,
+vulnerable software sensor, `host_enrolled` and `host_went_missing` events.
+
+**Still open from Phase 2** — team and label filtering. Labels are available on
+Fleet Free and carry host counts, so per-label sensors are a plausible addition;
+teams are Premium-only. Neither is built yet, and opinions from anyone running a
+large or multi-team fleet would genuinely shape it.
 
 **Phase 3** — optionally running *pre-existing saved queries* from Home
 Assistant. Never arbitrary SQL, and it will require a higher-privilege token

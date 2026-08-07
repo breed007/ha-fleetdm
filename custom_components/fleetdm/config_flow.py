@@ -33,16 +33,28 @@ from .api import (
 )
 from .const import (
     CONF_API_TOKEN,
+    CONF_INVENTORY_INTERVAL,
+    CONF_MISSING_AFTER_HOURS,
+    CONF_PER_HOST_ENTITIES,
     CONF_REDACT_HOSTNAMES,
     CONF_SUMMARY_INTERVAL,
     CONF_URL,
     CONF_VERIFY_SSL,
+    CONF_VULNERABILITY_SENSORS,
+    DEFAULT_INVENTORY_INTERVAL,
+    DEFAULT_MISSING_AFTER_HOURS,
     DEFAULT_REDACT_HOSTNAMES,
     DEFAULT_SUMMARY_INTERVAL,
     DEFAULT_VERIFY_SSL,
+    DEFAULT_VULNERABILITY_SENSORS,
     DOMAIN,
+    MAX_INVENTORY_INTERVAL,
+    MAX_MISSING_AFTER_HOURS,
     MAX_SUMMARY_INTERVAL,
+    MIN_INVENTORY_INTERVAL,
+    MIN_MISSING_AFTER_HOURS,
     MIN_SUMMARY_INTERVAL,
+    PER_HOST_ENTITY_THRESHOLD,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -220,13 +232,7 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class FleetOptionsFlow(OptionsFlow):
-    """Handle Fleet integration options.
-
-    Phase 1 exposes only the options that Phase 1 entities actually honour.
-    The inventory interval, per-host entity toggle, vulnerability sensors and
-    missing-after-hours threshold arrive alongside the entities they control in
-    Phase 2, rather than shipping now as controls that do nothing.
-    """
+    """Handle Fleet integration options."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -236,6 +242,18 @@ class FleetOptionsFlow(OptionsFlow):
             return self.async_create_entry(data=user_input)
 
         options = self.config_entry.options
+
+        # Default the per-host toggle to whatever the size rule would choose, so
+        # the form shows what is actually happening rather than a blank control
+        # the user has to guess the meaning of.
+        host_count = 0
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        if runtime is not None and runtime.inventory.data is not None:
+            host_count = len(runtime.inventory.data.hosts)
+        per_host_default = options.get(
+            CONF_PER_HOST_ENTITIES, host_count <= PER_HOST_ENTITY_THRESHOLD
+        )
+
         schema = vol.Schema(
             {
                 vol.Required(
@@ -253,6 +271,43 @@ class FleetOptionsFlow(OptionsFlow):
                     )
                 ),
                 vol.Required(
+                    CONF_INVENTORY_INTERVAL,
+                    default=options.get(
+                        CONF_INVENTORY_INTERVAL, DEFAULT_INVENTORY_INTERVAL
+                    ),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=MIN_INVENTORY_INTERVAL,
+                        max=MAX_INVENTORY_INTERVAL,
+                        step=1,
+                        unit_of_measurement="s",
+                        mode=NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Required(
+                    CONF_PER_HOST_ENTITIES, default=per_host_default
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_MISSING_AFTER_HOURS,
+                    default=options.get(
+                        CONF_MISSING_AFTER_HOURS, DEFAULT_MISSING_AFTER_HOURS
+                    ),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=MIN_MISSING_AFTER_HOURS,
+                        max=MAX_MISSING_AFTER_HOURS,
+                        step=1,
+                        unit_of_measurement="h",
+                        mode=NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Required(
+                    CONF_VULNERABILITY_SENSORS,
+                    default=options.get(
+                        CONF_VULNERABILITY_SENSORS, DEFAULT_VULNERABILITY_SENSORS
+                    ),
+                ): BooleanSelector(),
+                vol.Required(
                     CONF_REDACT_HOSTNAMES,
                     default=options.get(
                         CONF_REDACT_HOSTNAMES, DEFAULT_REDACT_HOSTNAMES
@@ -261,4 +316,8 @@ class FleetOptionsFlow(OptionsFlow):
             }
         )
 
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            description_placeholders={"host_count": str(host_count)},
+        )

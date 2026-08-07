@@ -17,10 +17,11 @@ from .const import (
     CONF_URL,
     CONF_VERIFY_SSL,
     DEFAULT_VERIFY_SSL,
+    STORAGE_KEY_INVENTORY_TEMPLATE,
     STORAGE_KEY_TEMPLATE,
     STORAGE_VERSION,
 )
-from .coordinator import FleetSummaryCoordinator
+from .coordinator import FleetInventoryCoordinator, FleetSummaryCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class FleetRuntimeData:
 
     client: FleetClient
     summary: FleetSummaryCoordinator
+    inventory: FleetInventoryCoordinator
 
 
 type FleetConfigEntry = ConfigEntry[FleetRuntimeData]
@@ -49,10 +51,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: FleetConfigEntry) -> boo
     )
     client = FleetClient(session, entry.data[CONF_URL], entry.data[CONF_API_TOKEN])
 
-    coordinator = FleetSummaryCoordinator(hass, entry, client)
-    await coordinator.async_config_entry_first_refresh()
+    summary = FleetSummaryCoordinator(hass, entry, client)
+    await summary.async_config_entry_first_refresh()
 
-    entry.runtime_data = FleetRuntimeData(client=client, summary=coordinator)
+    inventory = FleetInventoryCoordinator(hass, entry, client)
+    await inventory.async_config_entry_first_refresh()
+
+    entry.runtime_data = FleetRuntimeData(
+        client=client, summary=summary, inventory=inventory
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
@@ -65,13 +72,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: FleetConfigEntry) -> bo
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Clean up persisted drift state when the entry is deleted."""
-    store = Store[dict](
-        hass, STORAGE_VERSION, STORAGE_KEY_TEMPLATE.format(entry_id=entry.entry_id)
-    )
-    await store.async_remove()
+    """Clean up persisted event state when the entry is deleted."""
+    for template in (STORAGE_KEY_TEMPLATE, STORAGE_KEY_INVENTORY_TEMPLATE):
+        store = Store[dict](
+            hass, STORAGE_VERSION, template.format(entry_id=entry.entry_id)
+        )
+        await store.async_remove()
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: FleetConfigEntry) -> None:
-    """Reload the entry so new poll intervals take effect."""
+    """Reload the entry so new intervals and entity choices take effect."""
     await hass.config_entries.async_reload(entry.entry_id)

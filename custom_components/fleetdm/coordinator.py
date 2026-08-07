@@ -1,16 +1,23 @@
 """Data update coordinators for the Fleet integration.
 
-Phase 1 ships a single "summary" coordinator: it polls the two cheap endpoints
-(``/host_summary`` and ``/global/policies``) that power every fleet-level and
-per-policy entity. The slower "inventory" coordinator that backs per-host
-entities arrives in Phase 2 and will live alongside this one.
+Two coordinators, split by how expensive their endpoints are:
+
+* **Summary** polls ``/host_summary`` and the policies route every minute or so.
+  Both are cheap, and they power every fleet-level and per-policy entity.
+* **Inventory** polls the full host list, the vulnerable software summary and
+  the activity feed on a much slower cycle. The host list is the only genuinely
+  expensive call the integration makes.
+
+Both compute their events by diffing successive snapshots against a persisted
+baseline, so an ongoing condition fires once rather than every poll, and a
+restart neither replays nor loses transitions.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -18,22 +25,40 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import (
+    FleetActivity,
     FleetAuthError,
     FleetClient,
     FleetError,
+    FleetHost,
     FleetHostSummary,
     FleetPolicy,
+    FleetVulnerableSoftware,
 )
 from .const import (
+    ACTIVITY_TYPES_HOST_ENROLLED,
+    CONF_INVENTORY_INTERVAL,
+    CONF_MISSING_AFTER_HOURS,
+    CONF_PER_HOST_ENTITIES,
     CONF_SUMMARY_INTERVAL,
+    CONF_VULNERABILITY_SENSORS,
+    DEFAULT_INVENTORY_INTERVAL,
+    DEFAULT_MISSING_AFTER_HOURS,
     DEFAULT_SUMMARY_INTERVAL,
+    DEFAULT_VULNERABILITY_SENSORS,
     DOMAIN,
+    EVENT_HOST_ENROLLED,
+    EVENT_HOST_MISSING,
     EVENT_POLICY_FAILING,
     EVENT_POLICY_RECOVERED,
+    EVENT_TYPE_HOST_ENROLLED,
+    EVENT_TYPE_HOST_WENT_MISSING,
     EVENT_TYPE_POLICY_NEWLY_FAILING,
     EVENT_TYPE_POLICY_RECOVERED,
+    PER_HOST_ENTITY_THRESHOLD,
+    STORAGE_KEY_INVENTORY_TEMPLATE,
     STORAGE_KEY_TEMPLATE,
     STORAGE_VERSION,
 )
@@ -44,6 +69,8 @@ _LOGGER = logging.getLogger(__name__)
 _BUS_EVENT_FOR_TYPE = {
     EVENT_TYPE_POLICY_NEWLY_FAILING: EVENT_POLICY_FAILING,
     EVENT_TYPE_POLICY_RECOVERED: EVENT_POLICY_RECOVERED,
+    EVENT_TYPE_HOST_ENROLLED: EVENT_HOST_ENROLLED,
+    EVENT_TYPE_HOST_WENT_MISSING: EVENT_HOST_MISSING,
 }
 
 
@@ -256,6 +283,231 @@ class FleetSummaryCoordinator(DataUpdateCoordinator[FleetData]):
         await self._store.async_save(
             {"failing_policy_ids": sorted(self._failing_policy_ids)}
         )
+
+
+@dataclass(slots=True)
+class FleetInventoryData:
+    """Everything the inventory coordinator produces in one cycle."""
+
+    hosts: list[FleetHost] = field(default_factory=list)
+    vulnerable: FleetVulnerableSoftware | None = None
+    events: list[FleetDriftEvent] = field(default_factory=list)
+
+    @property
+    def hosts_by_id(self) -> dict[int, FleetHost]:
+        """Hosts keyed by their stable Fleet ID."""
+        return {host.id: host for host in self.hosts}
+
+
+class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
+    """Polls Fleet for the host list, vulnerable software and activity feed.
+
+    Deliberately slower than the summary coordinator: the host list is the only
+    genuinely expensive call the integration makes.
+
+    Unlike the entities it feeds, this coordinator runs even when per-host
+    entities are switched off, because the host-enrolled and host-missing events
+    are a headline feature and both need the host list. Only the *entities* are
+    gated by fleet size.
+    """
+
+    config_entry: ConfigEntry
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        client: FleetClient,
+    ) -> None:
+        """Initialise the coordinator."""
+        interval = entry.options.get(
+            CONF_INVENTORY_INTERVAL, DEFAULT_INVENTORY_INTERVAL
+        )
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN} inventory",
+            update_interval=timedelta(seconds=interval),
+        )
+        self.client = client
+        self._store = Store[dict[str, Any]](
+            hass,
+            STORAGE_VERSION,
+            STORAGE_KEY_INVENTORY_TEMPLATE.format(entry_id=entry.entry_id),
+        )
+        self._last_activity_id: int | None = None
+        self._missing_host_ids: set[int] = set()
+        self._has_baseline = False
+
+    @property
+    def missing_after(self) -> timedelta:
+        """How long unseen before a host counts as missing."""
+        hours = self.config_entry.options.get(
+            CONF_MISSING_AFTER_HOURS, DEFAULT_MISSING_AFTER_HOURS
+        )
+        return timedelta(hours=float(hours))
+
+    async def _async_setup(self) -> None:
+        """Restore the persisted event watermarks before the first refresh."""
+        stored = await self._store.async_load()
+        if stored is not None:
+            last = stored.get("last_activity_id")
+            self._last_activity_id = int(last) if last is not None else None
+            self._missing_host_ids = {
+                int(host_id) for host_id in stored.get("missing_host_ids", [])
+            }
+            self._has_baseline = True
+
+    async def _async_update_data(self) -> FleetInventoryData:
+        """Fetch hosts, vulnerable software and new activities."""
+        try:
+            hosts = await self.client.async_get_hosts()
+            activities = await self.client.async_get_activities(self._last_activity_id)
+            vulnerable = None
+            if self.config_entry.options.get(
+                CONF_VULNERABILITY_SENSORS, DEFAULT_VULNERABILITY_SENSORS
+            ):
+                vulnerable = await self.client.async_get_vulnerable_software()
+        except FleetAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except FleetError as err:
+            raise UpdateFailed(str(err)) from err
+
+        events = await self._compute_events(hosts, activities)
+        return FleetInventoryData(hosts=hosts, vulnerable=vulnerable, events=events)
+
+    async def _compute_events(
+        self, hosts: list[FleetHost], activities: list[FleetActivity]
+    ) -> list[FleetDriftEvent]:
+        """Derive host events, using the same no-storm rules as policy drift.
+
+        The first cycle on a new config entry establishes watermarks silently.
+        Without that, adding the integration would fire an enrolment event for
+        every host in the recent activity feed and a missing event for every
+        host that is already stale.
+        """
+        newest_activity = max((a.id for a in activities), default=None)
+        now = dt_util.utcnow()
+        cutoff = now - self.missing_after
+        currently_missing = {
+            host.id
+            for host in hosts
+            if host.seen_time is not None and host.seen_time < cutoff
+        }
+
+        if not self._has_baseline:
+            self._last_activity_id = newest_activity
+            self._missing_host_ids = currently_missing
+            self._has_baseline = True
+            await self._async_save()
+            _LOGGER.debug(
+                "Seeded inventory baseline: %d missing hosts, activity watermark "
+                "%s; no events fired",
+                len(currently_missing),
+                newest_activity,
+            )
+            return []
+
+        events: list[FleetDriftEvent] = []
+        by_id = {host.id: host for host in hosts}
+
+        for activity in sorted(activities, key=lambda a: a.id):
+            if activity.type not in ACTIVITY_TYPES_HOST_ENROLLED:
+                continue
+            events.append(
+                FleetDriftEvent(
+                    event_type=EVENT_TYPE_HOST_ENROLLED,
+                    data=_enrolment_event_payload(activity),
+                )
+            )
+
+        # Only hosts still present in Fleet: one deleted while missing is gone,
+        # not newly missing.
+        newly_missing = (currently_missing - self._missing_host_ids) & set(by_id)
+        events += [
+            FleetDriftEvent(
+                event_type=EVENT_TYPE_HOST_WENT_MISSING,
+                data=_missing_event_payload(by_id[host_id], now),
+            )
+            for host_id in sorted(newly_missing)
+        ]
+
+        changed = (
+            newest_activity is not None and newest_activity != self._last_activity_id
+        ) or currently_missing != self._missing_host_ids
+        if newest_activity is not None:
+            self._last_activity_id = newest_activity
+        self._missing_host_ids = currently_missing
+        if changed:
+            await self._async_save()
+
+        for event in events:
+            self._fire_bus_event(event)
+
+        return events
+
+    def _fire_bus_event(self, event: FleetDriftEvent) -> None:
+        """Fire the bus event that mirrors an `event` entity event."""
+        bus_event = _BUS_EVENT_FOR_TYPE.get(event.event_type)
+        if bus_event is None:
+            return
+        self.hass.bus.async_fire(
+            bus_event,
+            {"entry_id": self.config_entry.entry_id, **event.data},
+        )
+
+    async def _async_save(self) -> None:
+        """Persist the event watermarks."""
+        await self._store.async_save(
+            {
+                "last_activity_id": self._last_activity_id,
+                "missing_host_ids": sorted(self._missing_host_ids),
+            }
+        )
+
+
+def per_host_entities_enabled(entry: ConfigEntry, host_count: int) -> bool:
+    """Whether to create per-host entities for this entry.
+
+    An explicit choice in the options always wins. Otherwise the fleet size
+    decides: small fleets get them automatically, because that is what most
+    people want and the entity count is unremarkable. Above the threshold they
+    are off until asked for, so adding the integration to a large fleet cannot
+    create thousands of entities by surprise.
+    """
+    explicit = entry.options.get(CONF_PER_HOST_ENTITIES)
+    if explicit is not None:
+        return bool(explicit)
+    return host_count <= PER_HOST_ENTITY_THRESHOLD
+
+
+def _enrolment_event_payload(activity: FleetActivity) -> dict[str, Any]:
+    """Build the automation-facing payload for a host enrolment."""
+    details = activity.details
+    return {
+        "host_id": details.get("host_id"),
+        "host_name": details.get("host_display_name"),
+        "host_serial": details.get("host_serial"),
+        "activity_id": activity.id,
+        "enrolled_at": activity.created_at.isoformat() if activity.created_at else None,
+    }
+
+
+def _missing_event_payload(host: FleetHost, now: datetime) -> dict[str, Any]:
+    """Build the automation-facing payload for a host going missing."""
+    unseen_hours: float | None = None
+    if host.seen_time is not None:
+        unseen_hours = round((now - host.seen_time).total_seconds() / 3600, 1)
+    return {
+        "host_id": host.id,
+        "host_name": host.display_name,
+        "platform": host.platform,
+        "os_version": host.os_version,
+        "status": host.status,
+        "last_seen": host.seen_time.isoformat() if host.seen_time else None,
+        "unseen_hours": unseen_hours,
+    }
 
 
 def _policy_event_payload(policy: FleetPolicy) -> dict[str, Any]:
