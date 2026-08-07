@@ -4,10 +4,17 @@ These are the images for the [home-assistant/brands](https://github.com/home-ass
 repository. Home Assistant fetches them from the brands repository by domain, so
 they only take effect there once the brands PR is merged.
 
-Copies of `icon.png` and `logo.png` also live in
-`custom_components/fleetdm/brand/`, which is the in-repo fallback path the HACS
-validation action checks. Keep the two in sync — `scripts/generate_brand_assets.py`
-writes the canonical copies here, and they are copied across from there.
+The same four files are also mirrored into `custom_components/fleetdm/brand/`.
+That is not a fallback — since **Home Assistant 2026.3** a custom integration can
+ship its own brand images, and local images take priority over the CDN. It is
+also the path the HACS validation action checks.
+
+`scripts/generate_brand_assets.py` writes both locations in one run, so the two
+copies cannot drift.
+
+**Both are needed.** The in-integration folder only works on 2026.3 and later;
+this integration supports Home Assistant 2025.2+, so the brands repository
+entry is what gives everyone else an icon.
 
 ## Files
 

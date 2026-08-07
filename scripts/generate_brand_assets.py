@@ -25,6 +25,7 @@ Requires Pillow, which is not a runtime dependency of the integration:
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -176,12 +177,25 @@ def main() -> None:
         default=Path("brands/custom_integrations/fleetdm"),
         help="Output directory (default: %(default)s)",
     )
+    parser.add_argument(
+        "--mirror",
+        type=Path,
+        default=Path("custom_components/fleetdm/brand"),
+        help=(
+            "Also copy the assets here. This is the in-integration brand folder "
+            "Home Assistant 2026.3+ reads directly, and the path the HACS "
+            "validation action checks (default: %(default)s)"
+        ),
+    )
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
+
+    written: list[Path] = []
 
     for name, size in (("icon.png", 256), ("icon@2x.png", 512)):
         path = args.out / name
         render_icon(size).save(path, "PNG", optimize=True)
+        written.append(path)
         print(f"wrote {path} ({size}x{size})")
 
     for name, height in (("logo.png", 256), ("logo@2x.png", 512)):
@@ -191,7 +205,16 @@ def main() -> None:
             break
         path = args.out / name
         logo.save(path, "PNG", optimize=True)
+        written.append(path)
         print(f"wrote {path} ({logo.width}x{logo.height})")
+
+    # Mirror rather than document a manual copy step: the two copies drifting
+    # apart is exactly the kind of thing nobody notices until it ships.
+    if args.mirror:
+        args.mirror.mkdir(parents=True, exist_ok=True)
+        for path in written:
+            shutil.copy2(path, args.mirror / path.name)
+        print(f"mirrored {len(written)} files to {args.mirror}")
 
 
 if __name__ == "__main__":
