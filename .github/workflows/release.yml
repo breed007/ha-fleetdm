@@ -4,17 +4,16 @@ on:
   release:
     types: [published]
 
-permissions:
-  contents: write
-
 jobs:
-  release:
-    name: Build and attach release asset
+  verify:
+    name: Verify release version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Check the tag matches the manifest version
+        # HACS installs the version declared in manifest.json, not the tag, so a
+        # mismatch silently ships the wrong version number to every user.
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           TAG="${TAG#v}"
@@ -22,18 +21,6 @@ jobs:
           echo "tag=$TAG manifest=$MANIFEST"
           if [ "$TAG" != "$MANIFEST" ]; then
             echo "::error::Release tag ($TAG) does not match manifest.json version ($MANIFEST)."
-            echo "HACS installs the manifest version, so a mismatch ships the wrong version number."
             exit 1
           fi
-
-      - name: Build fleetdm.zip
-        # hacs.json sets zip_release, so the archive must contain the contents
-        # of the integration directory, not the directory itself.
-        run: |
-          cd custom_components/fleetdm
-          zip -r ../../fleetdm.zip . -x '*.pyc' -x '__pycache__/*'
-
-      - name: Attach to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: fleetdm.zip
+          echo "Release version verified."

@@ -1,9 +1,13 @@
 # Brand assets
 
 These are the images for the [home-assistant/brands](https://github.com/home-assistant/brands)
-repository. They are **not** used by the integration at runtime — Home Assistant
-and HACS fetch them from the brands repository by domain, so they only take
-effect once the brands PR is merged.
+repository. Home Assistant fetches them from the brands repository by domain, so
+they only take effect there once the brands PR is merged.
+
+Copies of `icon.png` and `logo.png` also live in
+`custom_components/fleetdm/brand/`, which is the in-repo fallback path the HACS
+validation action checks. Keep the two in sync — `scripts/generate_brand_assets.py`
+writes the canonical copies here, and they are copied across from there.
 
 ## Files
 

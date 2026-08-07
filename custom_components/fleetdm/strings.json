@@ -10,7 +10,7 @@
           "verify_ssl": "Verify SSL certificate"
         },
         "data_description": {
-          "url": "The base URL of your Fleet server, for example https://fleet.example.com",
+          "url": "The base URL of your Fleet server, including the scheme and any port.",
           "api_token": "Create a dedicated API-only user with the Observer role (fleetctl user create --api-only) and paste its token here. API-only tokens are not invalidated when you log out of the Fleet web UI.",
           "verify_ssl": "Turn this off only if your Fleet server uses a self-signed certificate."
         }

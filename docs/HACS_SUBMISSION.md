@@ -16,22 +16,25 @@ Two separate things, in this order:
 - [ ] Push to `https://github.com/breed007/ha-fleetdm`
 - [ ] Confirm CI is green: `Tests` (3 Home Assistant versions), `ruff`,
       `hassfest`, and `HACS`
-- [ ] Set the repository **description** — required for the default list.
-      Suggested: *Home Assistant integration for Fleet (fleetdm.com): host
-      counts, policy compliance, and drift notifications.*
-- [ ] Set repository **topics** — required for the default list. Suggested:
-      `home-assistant`, `homeassistant`, `hacs`, `custom-component`,
-      `fleetdm`, `osquery`, `security`, `compliance`
+- [x] Set the repository **description** — required for the default list.
+      Already set.
+- [x] Set repository **topics** — required for the default list. Already set:
+      `home-assistant`, `homeassistant`, `hacs`, `custom-component`, `fleetdm`,
+      `osquery`, `security`, `compliance`, `home-automation`, `device-management`
 - [ ] Confirm **Issues are enabled** — required for the default list
 - [ ] Enable **private vulnerability reporting** (Settings → Security), which
       [SECURITY.md](../SECURITY.md) points people to
 
 ## Cutting a release
 
-The release workflow builds `fleetdm.zip` and attaches it, because
-[hacs.json](../hacs.json) sets `zip_release`. It **fails the build if the git
-tag does not match `version` in `manifest.json`** — that mismatch is the most
-common way to ship a wrong version number.
+The release workflow **fails the build if the git tag does not match `version`
+in `manifest.json`** — that mismatch is the most common way to ship a wrong
+version number, since HACS installs the manifest version rather than the tag.
+
+HACS installs from the repository source, so no build artefact is needed.
+`zip_release` was deliberately not used: it requires a published release before
+the HACS validation action can resolve the repository's contents, which makes
+CI fail on every commit until the first release exists.
 
 1. [ ] Bump `version` in [manifest.json](../custom_components/fleetdm/manifest.json)
 2. [ ] Move the `Unreleased` section in [CHANGELOG.md](../CHANGELOG.md) under
@@ -39,7 +42,6 @@ common way to ship a wrong version number.
 3. [ ] Commit, then tag: `git tag v0.1.0 && git push --tags`
 4. [ ] Create a **GitHub Release** from the tag — a bare tag is not enough for
        HACS, it needs an actual release
-5. [ ] Confirm `fleetdm.zip` is attached to the release by the workflow
 
 ## Verifying installation as a user would
 
