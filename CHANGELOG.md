@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-label host count sensors.** One sensor per Fleet label showing how many
+  hosts match it, created and removed as labels change. Fleet's built-in labels
+  are registered but **disabled by default**: several are always empty on any
+  given fleet, and "All Hosts" only restates `sensor.fleet_hosts_total`. Labels
+  you created yourself are enabled, since those encode a distinction you chose
+  to define. Labels work on Fleet Free.
+- A `label_sensors` option to turn the whole set off, which also stops the
+  request being made.
+
+### Fixed
+
+- Label membership is read from Fleet's `count` field rather than `host_count`.
+  Fleet omits `host_count` entirely for a label with no hosts but always sends
+  `count`, so reading the former would have made every empty label report
+  nothing at all instead of zero. Verified against a live server, where 7 of 19
+  labels were affected.
+
+### Changed
+
+- The three near-identical dynamic-entity helpers for policies, hosts and labels
+  now share one implementation, parameterised by how to read IDs from the
+  coordinator. Adding a third copy would have been worse than collapsing them.
+
 ## [0.2.0] - 2026-08-07
 
 Phase 2. Per-host visibility, vulnerable software, and events for hosts

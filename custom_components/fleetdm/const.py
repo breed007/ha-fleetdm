@@ -16,6 +16,7 @@ CONF_SUMMARY_INTERVAL: Final = "summary_interval"
 CONF_INVENTORY_INTERVAL: Final = "inventory_interval"
 CONF_PER_HOST_ENTITIES: Final = "per_host_entities"
 CONF_VULNERABILITY_SENSORS: Final = "vulnerability_sensors"
+CONF_LABEL_SENSORS: Final = "label_sensors"
 CONF_MISSING_AFTER_HOURS: Final = "missing_after_hours"
 CONF_REDACT_HOSTNAMES: Final = "redact_hostnames_in_diagnostics"
 
@@ -24,6 +25,7 @@ DEFAULT_SUMMARY_INTERVAL: Final = 60
 DEFAULT_INVENTORY_INTERVAL: Final = 300
 DEFAULT_VERIFY_SSL: Final = True
 DEFAULT_VULNERABILITY_SENSORS: Final = True
+DEFAULT_LABEL_SENSORS: Final = True
 DEFAULT_MISSING_AFTER_HOURS: Final = 24
 DEFAULT_REDACT_HOSTNAMES: Final = True
 

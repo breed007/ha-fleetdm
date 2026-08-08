@@ -130,6 +130,38 @@ def host(
     }
 
 
+def label(
+    label_id: int,
+    name: str,
+    *,
+    count: int = 0,
+    builtin: bool = False,
+    include_host_count: bool = True,
+) -> dict[str, Any]:
+    """Build a label payload.
+
+    Fleet omits `host_count` entirely for an empty label but always sends
+    `count`, so `include_host_count` lets tests reproduce that.
+    """
+    payload: dict[str, Any] = {
+        "id": label_id,
+        "name": name,
+        "description": f"{name} description",
+        "label_type": "builtin" if builtin else "regular",
+        "label_membership_type": "dynamic",
+        "platform": "",
+        "count": count,
+    }
+    if include_host_count:
+        payload["host_count"] = count
+    return payload
+
+
+def labels_payload(*labels: dict[str, Any]) -> dict[str, Any]:
+    """Wrap label dicts in the API's envelope."""
+    return {"labels": list(labels)}
+
+
 def enrolment_activity(activity_id: int, host_id: int, name: str) -> dict[str, Any]:
     """Build a `fleet_enrolled` activity, the real type a Fleet 4.x server emits."""
     return {
@@ -187,6 +219,7 @@ def mock_fleet(
     hosts: dict[str, Any] | None = None,
     activities: dict[str, Any] | None = None,
     software: dict[str, Any] | None = None,
+    labels: dict[str, Any] | None = None,
 ) -> None:
     """Register a full set of successful Fleet endpoints."""
     aioclient_mock.get(f"{API}/version", json=version or VERSION_RESPONSE)
@@ -202,6 +235,15 @@ def mock_fleet(
     aioclient_mock.get(f"{API}/activities", json=activities or activities_payload())
     aioclient_mock.get(
         f"{API}/software/titles", json=software or VULNERABLE_SOFTWARE_RESPONSE
+    )
+    aioclient_mock.get(
+        f"{API}/labels",
+        json=labels
+        or labels_payload(
+            label(1, "All Hosts", count=2, builtin=True),
+            label(2, "Apple Silicon macOS hosts", count=1),
+            label(3, "Proxmox Linux VMs", count=0, include_host_count=False),
+        ),
     )
 
 

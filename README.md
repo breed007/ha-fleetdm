@@ -35,6 +35,7 @@ recent Home Assistant releases plus that floor.
 | `binary_sensor.fleet_<policy_name>` | binary_sensor (`problem`) | One per global policy. `on` = at least one host failing |
 | `sensor.fleet_<policy_name>_failing_hosts` | sensor | Failing host count per policy, for graphing. **Disabled by default** |
 | `sensor.fleet_vulnerable_software` | sensor | Software titles with known CVEs. Attribute lists the most widespread |
+| `sensor.fleet_label_<name>` | sensor | Hosts matching each Fleet label. Built-in labels are **disabled by default** |
 | `event.fleet_fleet_events` | event | Timeline of compliance and host events |
 
 ### Per host
@@ -154,6 +155,7 @@ IP, and turning verification off to work around that is the wrong fix.
 | Create entities for each host | auto | On for ≤ 50 hosts. Set it explicitly to override |
 | Treat a host as missing after | 24 h | Independent of Fleet's own 30-day missing bucket |
 | Vulnerable software sensor | on | Turn off to skip the software query entirely |
+| Label host-count sensors | on | One per label. Fleet's built-ins are created but disabled |
 | Redact hostnames in diagnostics | on | See [Diagnostics](#diagnostics) |
 
 ---
@@ -365,10 +367,9 @@ compliance entities, compliance drift events, diagnostics.
 **Phase 2 (current)** — per-host devices and entities with size gating,
 vulnerable software sensor, `host_enrolled` and `host_went_missing` events.
 
-**Still open from Phase 2** — team and label filtering. Labels are available on
-Fleet Free and carry host counts, so per-label sensors are a plausible addition;
-teams are Premium-only. Neither is built yet, and opinions from anyone running a
-large or multi-team fleet would genuinely shape it.
+**Still open from Phase 2** — team filtering, which is Fleet Premium only and
+so does nothing on Free. Opinions from anyone running a multi-team fleet would
+genuinely shape it.
 
 **Phase 3** — optionally running *pre-existing saved queries* from Home
 Assistant. Never arbitrary SQL, and it will require a higher-privilege token

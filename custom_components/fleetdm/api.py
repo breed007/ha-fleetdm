@@ -279,6 +279,52 @@ class FleetVulnerableSoftware:
 
 
 @dataclass(frozen=True, slots=True)
+class FleetLabel:
+    """A Fleet label and how many hosts currently match it."""
+
+    id: int
+    name: str
+    description: str
+    label_type: str
+    membership_type: str
+    platform: str
+    host_count: int
+
+    @property
+    def is_builtin(self) -> bool:
+        """Whether Fleet ships this label rather than the operator creating it.
+
+        Built-ins are the platform buckets Fleet defines for everyone. They are
+        much less interesting than an operator's own labels, and several are
+        always empty on any given fleet.
+        """
+        return self.label_type == "builtin"
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> FleetLabel:
+        """Build a label from a Fleet API payload.
+
+        Fleet reports the membership size twice, and the two are not
+        interchangeable: ``host_count`` is omitted entirely for a label with no
+        hosts, while ``count`` is always present. Preferring ``count`` is what
+        makes an empty label report 0 rather than nothing at all. The fallback
+        keeps older servers working if they only send ``host_count``.
+        """
+        count = data.get("count")
+        if count is None:
+            count = data.get("host_count") or 0
+        return cls(
+            id=int(data["id"]),
+            name=str(data.get("name") or f"Label {data['id']}"),
+            description=str(data.get("description") or ""),
+            label_type=str(data.get("label_type") or ""),
+            membership_type=str(data.get("label_membership_type") or ""),
+            platform=str(data.get("platform") or ""),
+            host_count=int(count),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class FleetActivity:
     """One entry from Fleet's audit/activity feed."""
 
@@ -518,6 +564,15 @@ class FleetClient:
                 for title in (data.get("software_titles") or [])
             ],
         )
+
+    async def async_get_labels(self) -> list[FleetLabel]:
+        """Return every label with its current membership count.
+
+        Not paginated: Fleet returns all labels in one response, and a label
+        library large enough to need paging would be unusual.
+        """
+        data = await self._get("/labels")
+        return [FleetLabel.from_json(label) for label in (data.get("labels") or [])]
 
     async def async_get_activities(
         self, after_id: int | None = None

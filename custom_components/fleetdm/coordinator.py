@@ -34,17 +34,20 @@ from .api import (
     FleetError,
     FleetHost,
     FleetHostSummary,
+    FleetLabel,
     FleetPolicy,
     FleetVulnerableSoftware,
 )
 from .const import (
     ACTIVITY_TYPES_HOST_ENROLLED,
     CONF_INVENTORY_INTERVAL,
+    CONF_LABEL_SENSORS,
     CONF_MISSING_AFTER_HOURS,
     CONF_PER_HOST_ENTITIES,
     CONF_SUMMARY_INTERVAL,
     CONF_VULNERABILITY_SENSORS,
     DEFAULT_INVENTORY_INTERVAL,
+    DEFAULT_LABEL_SENSORS,
     DEFAULT_MISSING_AFTER_HOURS,
     DEFAULT_SUMMARY_INTERVAL,
     DEFAULT_VULNERABILITY_SENSORS,
@@ -291,12 +294,18 @@ class FleetInventoryData:
 
     hosts: list[FleetHost] = field(default_factory=list)
     vulnerable: FleetVulnerableSoftware | None = None
+    labels: list[FleetLabel] = field(default_factory=list)
     events: list[FleetDriftEvent] = field(default_factory=list)
 
     @property
     def hosts_by_id(self) -> dict[int, FleetHost]:
         """Hosts keyed by their stable Fleet ID."""
         return {host.id: host for host in self.hosts}
+
+    @property
+    def labels_by_id(self) -> dict[int, FleetLabel]:
+        """Labels keyed by their stable Fleet ID."""
+        return {label.id: label for label in self.labels}
 
 
 class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
@@ -369,13 +378,18 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
                 CONF_VULNERABILITY_SENSORS, DEFAULT_VULNERABILITY_SENSORS
             ):
                 vulnerable = await self.client.async_get_vulnerable_software()
+            labels: list[FleetLabel] = []
+            if self.config_entry.options.get(CONF_LABEL_SENSORS, DEFAULT_LABEL_SENSORS):
+                labels = await self.client.async_get_labels()
         except FleetAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except FleetError as err:
             raise UpdateFailed(str(err)) from err
 
         events = await self._compute_events(hosts, activities)
-        return FleetInventoryData(hosts=hosts, vulnerable=vulnerable, events=events)
+        return FleetInventoryData(
+            hosts=hosts, vulnerable=vulnerable, labels=labels, events=events
+        )
 
     async def _compute_events(
         self, hosts: list[FleetHost], activities: list[FleetActivity]

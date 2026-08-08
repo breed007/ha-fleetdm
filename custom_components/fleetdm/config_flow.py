@@ -34,6 +34,7 @@ from .api import (
 from .const import (
     CONF_API_TOKEN,
     CONF_INVENTORY_INTERVAL,
+    CONF_LABEL_SENSORS,
     CONF_MISSING_AFTER_HOURS,
     CONF_PER_HOST_ENTITIES,
     CONF_REDACT_HOSTNAMES,
@@ -42,6 +43,7 @@ from .const import (
     CONF_VERIFY_SSL,
     CONF_VULNERABILITY_SENSORS,
     DEFAULT_INVENTORY_INTERVAL,
+    DEFAULT_LABEL_SENSORS,
     DEFAULT_MISSING_AFTER_HOURS,
     DEFAULT_REDACT_HOSTNAMES,
     DEFAULT_SUMMARY_INTERVAL,
@@ -306,6 +308,10 @@ class FleetOptionsFlow(OptionsFlow):
                     default=options.get(
                         CONF_VULNERABILITY_SENSORS, DEFAULT_VULNERABILITY_SENSORS
                     ),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_LABEL_SENSORS,
+                    default=options.get(CONF_LABEL_SENSORS, DEFAULT_LABEL_SENSORS),
                 ): BooleanSelector(),
                 vol.Required(
                     CONF_REDACT_HOSTNAMES,

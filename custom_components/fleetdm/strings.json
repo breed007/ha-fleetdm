@@ -60,7 +60,8 @@
           "inventory_interval": "Inventory update interval",
           "per_host_entities": "Create entities for each host",
           "missing_after_hours": "Treat a host as missing after",
-          "vulnerability_sensors": "Vulnerable software sensor"
+          "vulnerability_sensors": "Vulnerable software sensor",
+          "label_sensors": "Label host-count sensors"
         },
         "data_description": {
           "summary_interval": "How often to poll Fleet for host counts and policy compliance, in seconds.",
@@ -68,7 +69,8 @@
           "inventory_interval": "How often to poll the host list and vulnerable software, in seconds. This is the expensive call, so keep it well above the update interval.",
           "per_host_entities": "Creates a device and several entities for every enrolled host. On by default for fleets of 50 hosts or fewer.",
           "missing_after_hours": "How long a host may go without checking in before its missing sensor turns on and a host-missing event fires. Independent of Fleet's own 30-day missing bucket.",
-          "vulnerability_sensors": "Track how many software titles have known vulnerabilities."
+          "vulnerability_sensors": "Track how many software titles have known vulnerabilities.",
+          "label_sensors": "One sensor per Fleet label showing how many hosts match it. Fleet's own built-in labels are created but disabled, since several are always empty and All Hosts just restates the total."
         }
       }
     }
