@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-08
+
+Per-label host counts. Labels are available on Fleet Free, so unlike teams
+this works on every tier.
+
 ### Added
 
 - **Per-label host count sensors.** One sensor per Fleet label showing how many
@@ -140,7 +145,8 @@ First release. Fleet-level monitoring and per-policy compliance, read-only.
   tier, with the drift baseline seeding silently rather than firing an event
   for each of the 23 already-failing policies
 
-[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/breed007/ha-fleetdm/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/breed007/ha-fleetdm/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/breed007/ha-fleetdm/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/breed007/ha-fleetdm/releases/tag/v0.1.0
