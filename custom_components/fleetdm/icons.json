@@ -27,6 +27,9 @@
       },
       "host_last_restarted": {
         "default": "mdi:restart"
+      },
+      "label_hosts": {
+        "default": "mdi:label-outline"
       }
     },
     "binary_sensor": {

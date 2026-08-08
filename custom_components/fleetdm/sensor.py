@@ -20,7 +20,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from . import FleetConfigEntry
-from .const import CONF_VULNERABILITY_SENSORS, DEFAULT_VULNERABILITY_SENSORS
+from .const import (
+    CONF_LABEL_SENSORS,
+    CONF_VULNERABILITY_SENSORS,
+    DEFAULT_LABEL_SENSORS,
+    DEFAULT_VULNERABILITY_SENSORS,
+)
 from .coordinator import (
     FleetData,
     FleetInventoryCoordinator,
@@ -31,8 +36,10 @@ from .entity import (
     FleetEntity,
     FleetHostEntity,
     FleetInventoryEntity,
+    FleetLabelEntity,
     FleetPolicyEntity,
     async_setup_dynamic_host_entities,
+    async_setup_dynamic_label_entities,
     async_setup_dynamic_policy_entities,
     fleet_unique_id,
 )
@@ -44,6 +51,7 @@ UNIT_TITLES = "titles"
 POLICY_FAILING_KEY = "failing_hosts"
 HOST_FAILING_POLICIES_KEY = "failing_policies"
 HOST_LAST_RESTARTED_KEY = "last_restarted"
+LABEL_HOSTS_KEY = "hosts"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -146,6 +154,17 @@ async def async_setup_entry(
 
     if entry.options.get(CONF_VULNERABILITY_SENSORS, DEFAULT_VULNERABILITY_SENSORS):
         async_add_entities([FleetVulnerableSoftwareSensor(inventory, entry)])
+
+    if entry.options.get(CONF_LABEL_SENSORS, DEFAULT_LABEL_SENSORS):
+        async_setup_dynamic_label_entities(
+            hass,
+            entry,
+            inventory,
+            async_add_entities,
+            Platform.SENSOR,
+            LABEL_HOSTS_KEY,
+            lambda label_id: FleetLabelHostsSensor(inventory, entry, label_id),
+        )
 
     host_count = len(inventory.data.hosts) if inventory.data else 0
     if not per_host_entities_enabled(entry, host_count):
@@ -290,6 +309,60 @@ class FleetVulnerableSoftwareSensor(FleetInventoryEntity, SensorEntity):
                 }
                 for title in vulnerable.worst
             ],
+        }
+
+
+class FleetLabelHostsSensor(FleetLabelEntity, SensorEntity):
+    """How many hosts currently match a Fleet label.
+
+    Fleet's built-in labels are registered but **disabled by default**. They are
+    the platform buckets Fleet defines for everyone rather than anything the
+    operator chose: several are always empty on any given fleet, and "All Hosts"
+    just restates `sensor.fleet_hosts_total`. Labels you created yourself are
+    enabled, because those encode a distinction you cared enough to define.
+    """
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UNIT_HOSTS
+
+    def __init__(
+        self,
+        coordinator: FleetInventoryCoordinator,
+        entry: FleetConfigEntry,
+        label_id: int,
+    ) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, entry, label_id, LABEL_HOSTS_KEY)
+        label = self.label
+        self._attr_entity_registry_enabled_default = not (
+            label is not None and label.is_builtin
+        )
+
+    @property
+    def name(self) -> str | None:
+        """Prefix the label name so it reads clearly on the hub device."""
+        if (label := self.label) is None:
+            return None
+        return f"Label {label.name}"
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the label's current membership count."""
+        if (label := self.label) is None:
+            return None
+        return label.host_count
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose what kind of label this is and how membership is decided."""
+        if (label := self.label) is None:
+            return None
+        return {
+            "label_id": label.id,
+            "builtin": label.is_builtin,
+            "membership_type": label.membership_type,
+            "platform": label.platform,
+            "description": label.description,
         }
 
 

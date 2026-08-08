@@ -127,6 +127,18 @@ async def async_get_config_entry_diagnostics(
             }
             for host in inv.hosts
         ]
+        # Label names are the operator's own taxonomy, not machine identifiers,
+        # so they are kept even when hostnames are redacted.
+        payload["labels"] = [
+            {
+                "id": lbl.id,
+                "name": lbl.name,
+                "builtin": lbl.is_builtin,
+                "membership_type": lbl.membership_type,
+                "host_count": lbl.host_count,
+            }
+            for lbl in inv.labels
+        ]
         if inv.vulnerable is not None:
             payload["vulnerable_software"] = {
                 "count": inv.vulnerable.count,

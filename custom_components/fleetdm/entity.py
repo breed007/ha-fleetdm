@@ -12,7 +12,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import FleetHost, FleetPolicy
+from .api import FleetHost, FleetLabel, FleetPolicy
 from .const import DOMAIN, MANUFACTURER
 from .coordinator import FleetInventoryCoordinator, FleetSummaryCoordinator
 
@@ -109,6 +109,54 @@ class FleetPolicyEntity(FleetEntity):
         }
 
 
+def label_unique_id(entry_id: str, label_id: int, key: str) -> str:
+    """Build the unique ID for a per-label entity."""
+    return f"{entry_id}_label_{label_id}_{key}"
+
+
+class FleetLabelEntity(CoordinatorEntity[FleetInventoryCoordinator]):
+    """Base entity for a single Fleet label, on the hub device."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: FleetInventoryCoordinator,
+        entry: ConfigEntry,
+        label_id: int,
+        key: str,
+    ) -> None:
+        """Initialise the label entity."""
+        super().__init__(coordinator)
+        self._entry = entry
+        self._label_id = label_id
+        self._attr_unique_id = label_unique_id(entry.entry_id, label_id, key)
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, entry.entry_id)})
+
+    @property
+    def label(self) -> FleetLabel | None:
+        """The label this entity tracks, or None if it was deleted."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.labels_by_id.get(self._label_id)
+
+    @property
+    def available(self) -> bool:
+        """Only available while the label still exists in Fleet."""
+        return super().available and self.label is not None
+
+    @property
+    def name(self) -> str | None:
+        """Follow the label's current name in Fleet.
+
+        Resolved on every read, so renaming a label in Fleet renames the entity
+        without orphaning its history.
+        """
+        if (label := self.label) is not None:
+            return label.name
+        return None
+
+
 def host_unique_id(entry_id: str, host_id: int, key: str) -> str:
     """Build the unique ID for a per-host entity.
 
@@ -193,6 +241,50 @@ def _host_model(host: FleetHost | None) -> str | None:
 
 
 @callback
+def async_setup_dynamic_entities(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: Any,
+    async_add_entities: AddEntitiesCallback,
+    platform: str,
+    current_ids: Callable[[Any], set[int]],
+    unique_id_for: Callable[[int], str],
+    factory: Callable[[int], Any],
+) -> None:
+    """Track a set of Fleet objects, creating and removing entities to match.
+
+    Policies, hosts and labels all come and go in Fleet, and all want the same
+    handling: create entities for anything newly seen, and purge registry
+    entries for anything that has disappeared, without needing a reload. This is
+    that shared behaviour, parameterised by how to read the current IDs out of
+    the coordinator and how to build a unique ID from one.
+    """
+    known: set[int] = set()
+
+    @callback
+    def _sync_entities() -> None:
+        if coordinator.data is None:
+            return
+        current = current_ids(coordinator.data)
+
+        if added := current - known:
+            async_add_entities(factory(item_id) for item_id in sorted(added))
+            known.update(added)
+
+        if removed := known - current:
+            registry = er.async_get(hass)
+            for item_id in removed:
+                if entity_id := registry.async_get_entity_id(
+                    platform, DOMAIN, unique_id_for(item_id)
+                ):
+                    registry.async_remove(entity_id)
+            known.difference_update(removed)
+
+    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
+    _sync_entities()
+
+
+@callback
 def async_setup_dynamic_host_entities(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -202,36 +294,17 @@ def async_setup_dynamic_host_entities(
     key: str,
     factory: Callable[[int], Any],
 ) -> None:
-    """Create and remove per-host entities as hosts enrol and leave Fleet.
-
-    Mirrors the per-policy helper: entities appear for newly enrolled hosts and
-    registry entries are purged for hosts deleted from Fleet, without needing a
-    reload.
-    """
-    known: set[int] = set()
-
-    @callback
-    def _sync_entities() -> None:
-        if coordinator.data is None:
-            return
-        current = set(coordinator.data.hosts_by_id)
-
-        if added := current - known:
-            async_add_entities(factory(host_id) for host_id in sorted(added))
-            known.update(added)
-
-        if removed := known - current:
-            registry = er.async_get(hass)
-            for host_id in removed:
-                unique_id = host_unique_id(entry.entry_id, host_id, key)
-                if entity_id := registry.async_get_entity_id(
-                    platform, DOMAIN, unique_id
-                ):
-                    registry.async_remove(entity_id)
-            known.difference_update(removed)
-
-    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
-    _sync_entities()
+    """Track hosts as they enrol in and leave Fleet."""
+    async_setup_dynamic_entities(
+        hass,
+        entry,
+        coordinator,
+        async_add_entities,
+        platform,
+        lambda data: set(data.hosts_by_id),
+        lambda host_id: host_unique_id(entry.entry_id, host_id, key),
+        factory,
+    )
 
 
 @callback
@@ -244,33 +317,37 @@ def async_setup_dynamic_policy_entities(
     key: str,
     factory: Callable[[int], Any],
 ) -> None:
-    """Create and remove per-policy entities as policies come and go in Fleet.
+    """Track global policies as they are created and deleted in Fleet."""
+    async_setup_dynamic_entities(
+        hass,
+        entry,
+        coordinator,
+        async_add_entities,
+        platform,
+        lambda data: set(data.policies_by_id),
+        lambda policy_id: policy_unique_id(entry.entry_id, policy_id, key),
+        factory,
+    )
 
-    Adds entities for policies seen for the first time and purges registry
-    entries for policies that have been deleted, so the entity list tracks Fleet
-    without requiring a reload.
-    """
-    known: set[int] = set()
 
-    @callback
-    def _sync_entities() -> None:
-        if coordinator.data is None:
-            return
-        current = set(coordinator.data.policies_by_id)
-
-        if added := current - known:
-            async_add_entities(factory(policy_id) for policy_id in sorted(added))
-            known.update(added)
-
-        if removed := known - current:
-            registry = er.async_get(hass)
-            for policy_id in removed:
-                unique_id = policy_unique_id(entry.entry_id, policy_id, key)
-                if entity_id := registry.async_get_entity_id(
-                    platform, DOMAIN, unique_id
-                ):
-                    registry.async_remove(entity_id)
-            known.difference_update(removed)
-
-    entry.async_on_unload(coordinator.async_add_listener(_sync_entities))
-    _sync_entities()
+@callback
+def async_setup_dynamic_label_entities(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: FleetInventoryCoordinator,
+    async_add_entities: AddEntitiesCallback,
+    platform: str,
+    key: str,
+    factory: Callable[[int], Any],
+) -> None:
+    """Track labels as they are created and deleted in Fleet."""
+    async_setup_dynamic_entities(
+        hass,
+        entry,
+        coordinator,
+        async_add_entities,
+        platform,
+        lambda data: set(data.labels_by_id),
+        lambda label_id: label_unique_id(entry.entry_id, label_id, key),
+        factory,
+    )

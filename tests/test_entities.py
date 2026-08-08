@@ -19,6 +19,7 @@ from .conftest import (
     VULNERABLE_SOFTWARE_RESPONSE,
     activities_payload,
     hosts_payload,
+    labels_payload,
     policies_payload,
 )
 from .test_drift import failing, poll, setup_with
@@ -217,6 +218,7 @@ async def test_forbidden_config_endpoint_degrades_to_free(
     aioclient_mock.get(f"{API}/hosts", json=hosts_payload(HOST_LAPTOP))
     aioclient_mock.get(f"{API}/activities", json=activities_payload())
     aioclient_mock.get(f"{API}/software/titles", json=VULNERABLE_SOFTWARE_RESPONSE)
+    aioclient_mock.get(f"{API}/labels", json=labels_payload())
     mock_config_entry.add_to_hass(hass)
 
     assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
