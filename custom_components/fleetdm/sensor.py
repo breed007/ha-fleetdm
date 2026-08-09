@@ -43,6 +43,10 @@ from .entity import (
     fleet_unique_id,
 )
 
+# Read-only, coordinator-driven: every entity reads from an already-fetched
+# snapshot, so Home Assistant need not serialise updates across them.
+PARALLEL_UPDATES = 0
+
 UNIT_HOSTS = "hosts"
 UNIT_POLICIES = "policies"
 UNIT_TITLES = "titles"
@@ -180,7 +184,12 @@ async def async_setup_entry(
         )
 
 
-def _build_host_sensor(factory, coordinator, entry, host_id: int):
+def _build_host_sensor(
+    factory: Callable[[FleetInventoryCoordinator, FleetConfigEntry, int], SensorEntity],
+    coordinator: FleetInventoryCoordinator,
+    entry: FleetConfigEntry,
+    host_id: int,
+) -> SensorEntity:
     """Construct a per-host sensor for the dynamic-entity helper."""
     return factory(coordinator, entry, host_id)
 
@@ -227,6 +236,7 @@ class FleetPolicyFailingSensor(FleetPolicyEntity, SensorEntity):
     _attr_entity_registry_enabled_default = False
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UNIT_HOSTS
+    _attr_translation_key = "policy_failing_hosts"
 
     def __init__(
         self,
@@ -236,13 +246,6 @@ class FleetPolicyFailingSensor(FleetPolicyEntity, SensorEntity):
     ) -> None:
         """Initialise the per-policy sensor."""
         super().__init__(coordinator, entry, policy_id, POLICY_FAILING_KEY)
-
-    @property
-    def name(self) -> str | None:
-        """Distinguish this from the policy's binary sensor of the same name."""
-        if (policy := self.policy) is None:
-            return None
-        return f"{policy.name} failing hosts"
 
     @property
     def native_value(self) -> StateType:
@@ -319,6 +322,7 @@ class FleetLabelHostsSensor(FleetLabelEntity, SensorEntity):
 
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UNIT_HOSTS
+    _attr_translation_key = "label_hosts"
 
     def __init__(
         self,
@@ -332,13 +336,6 @@ class FleetLabelHostsSensor(FleetLabelEntity, SensorEntity):
         self._attr_entity_registry_enabled_default = not (
             label is not None and label.is_builtin
         )
-
-    @property
-    def name(self) -> str | None:
-        """Prefix the label name so it reads clearly on the hub device."""
-        if (label := self.label) is None:
-            return None
-        return f"Label {label.name}"
 
     @property
     def native_value(self) -> StateType:

@@ -15,13 +15,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: home-assistant/actions/hassfest@master
+      # Pinned to a commit rather than a moving branch: these actions run with
+      # access to the repository, and @master silently changes under us.
+      # Refreshed deliberately, not automatically.
+      - uses: home-assistant/actions/hassfest@a7c616ce81ccda50150bf1595786c71b1883fabb # master @ 2026-08-03
 
   hacs:
     name: HACS
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hacs/action@main
+      # Pinned to main rather than the latest release tag: hacs/action's most
+      # recent tag is 22.5.0 from 2022, so pinning to it would validate against
+      # four-year-old rules and miss everything HACS requires today.
+      - uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main @ 2026-06-08
         with:
           category: integration

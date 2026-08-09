@@ -103,6 +103,12 @@
       },
       "host_last_restarted": {
         "name": "Last restarted"
+      },
+      "policy_failing_hosts": {
+        "name": "{policy} failing hosts"
+      },
+      "label_hosts": {
+        "name": "Label {label}"
       }
     },
     "binary_sensor": {
@@ -114,6 +120,9 @@
       },
       "host_missing": {
         "name": "Missing"
+      },
+      "policy": {
+        "name": "{policy}"
       }
     },
     "event": {

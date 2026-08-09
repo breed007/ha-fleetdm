@@ -11,14 +11,24 @@ from the bus.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import FleetConfigEntry
 from .const import EVENT_TYPES
-from .coordinator import FleetInventoryCoordinator, FleetSummaryCoordinator
+from .coordinator import (
+    FleetDriftEvent,
+    FleetInventoryCoordinator,
+    FleetSummaryCoordinator,
+)
 from .entity import FleetEntity, fleet_unique_id
+
+# Read-only, coordinator-driven: every entity reads from an already-fetched
+# snapshot, so Home Assistant need not serialise updates across them.
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
@@ -95,7 +105,7 @@ class FleetEventEntity(FleetEntity, EventEntity):
         self.async_write_ha_state()
 
     @callback
-    def _replay(self, events) -> None:
+    def _replay(self, events: Iterable[FleetDriftEvent]) -> None:
         """Trigger each event, writing state so automations see every one."""
         for event in events:
             self._trigger_event(event.event_type, event.data)

@@ -1,0 +1,127 @@
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: |
+      The integration registers no service actions. It is read-only.
+  appropriate-polling: done
+  brands: done
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: done
+  dependency-transparency:
+    status: exempt
+    comment: |
+      No third-party runtime dependencies. The Fleet client is a thin wrapper
+      over Home Assistant's shared aiohttp session, so `requirements` is empty.
+  docs-actions:
+    status: exempt
+    comment: No service actions to document.
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry:
+    status: done
+    comment: |
+      Keyed on the normalised base URL, so the same server cannot be added
+      twice under different spellings.
+
+  # Silver
+  action-exceptions:
+    status: exempt
+    comment: No service actions.
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-installation-parameters: done
+  entity-unavailable:
+    status: done
+    comment: |
+      Entities go unavailable when their coordinator fails, and per-object
+      entities also when their policy, host or label leaves Fleet. The event
+      entity tracks both coordinators, since it carries events from each.
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  reauthentication-flow:
+    status: done
+    comment: |
+      A 401 from any endpoint raises ConfigEntryAuthFailed, including during
+      the licence-tier probe.
+  test-coverage:
+    status: done
+    comment: CI enforces a floor of 85%; current coverage is above 95%.
+
+  # Gold
+  devices: done
+  diagnostics:
+    status: done
+    comment: |
+      The API token is always redacted. Host names and IP addresses are
+      redacted by default, controlled by an option.
+  discovery:
+    status: exempt
+    comment: |
+      A Fleet server is a self-hosted web service at an operator-chosen URL,
+      with no discovery protocol to listen for.
+  discovery-update-info:
+    status: exempt
+    comment: Not discoverable.
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations:
+    status: done
+    comment: |
+      The README is explicit that Fleet's host status is check-in freshness
+      rather than reachability, and that data cannot be fresher than the
+      osquery check-in interval.
+  docs-supported-devices: done
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices:
+    status: done
+    comment: |
+      Hosts become devices as they enrol and are removed when Fleet drops
+      them, without a reload.
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default:
+    status: done
+    comment: |
+      Per-policy count sensors, per-host boot time and diagnostics, and Fleet's
+      built-in labels are all registered but disabled.
+  entity-translations: done
+  exception-translations:
+    status: todo
+    comment: |
+      Coordinator failures surface English strings from the API client rather
+      than translated exceptions.
+  icon-translations: done
+  reconfiguration-flow:
+    status: done
+    comment: Supports planned API token rotation before the old token is revoked.
+  repair-issues:
+    status: todo
+    comment: |
+      Nothing currently raises a repair issue. A candidate is the pagination
+      safety cap, which today only warns in the log.
+  stale-devices: done
+
+  # Platinum
+  async-dependency:
+    status: done
+    comment: Fully async; no executor jobs.
+  inject-websession:
+    status: done
+    comment: Uses Home Assistant's shared aiohttp session.
+  strict-typing:
+    status: todo
+    comment: |
+      Type hints are present throughout but the integration is not yet checked
+      under mypy's strict settings in CI.
