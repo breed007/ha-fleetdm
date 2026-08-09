@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-09
+
+A bug-fix and hardening release, plus five new sensors. Several fixes change
+behaviour you will notice — those are marked below.
+
 ### Added
 
 - Per-host **disk free** as a percentage (enabled) and in gigabytes (disabled),
@@ -198,7 +203,8 @@ First release. Fleet-level monitoring and per-policy compliance, read-only.
   tier, with the drift baseline seeding silently rather than firing an event
   for each of the 23 already-failing policies
 
-[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/breed007/ha-fleetdm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/breed007/ha-fleetdm/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/breed007/ha-fleetdm/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/breed007/ha-fleetdm/compare/v0.1.0...v0.1.1
