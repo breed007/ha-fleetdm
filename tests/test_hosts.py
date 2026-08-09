@@ -275,9 +275,11 @@ async def test_device_removal_allowed_only_for_departed_hosts(
     # The hub belongs to the config entry itself.
     assert await async_remove_config_entry_device(hass, entry, hub) is False
 
-    stale = dr.DeviceEntry(
-        identifiers={(DOMAIN, f"{entry.entry_id}_host_999")},
+    # Built through the registry rather than constructed directly: DeviceEntry's
+    # signature differs across the Home Assistant versions CI covers.
+    stale = devices.async_get_or_create(
         config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}_host_999")},
     )
     assert await async_remove_config_entry_device(hass, entry, stale) is True
 
