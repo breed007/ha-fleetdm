@@ -15,9 +15,10 @@ osquery-based device management platform. It is read-only by design.
 **Requires Home Assistant 2025.2.0 or later.** CI tests against the two most
 recent Home Assistant releases plus that floor.
 
-> **Status: Phase 2.** Fleet-level counts, per-policy compliance, per-host
-> devices, vulnerable software, and events for compliance drift, host enrolment
-> and hosts going missing. See [Roadmap](#roadmap) for what's next.
+> Fleet-level counts, per-policy compliance, per-host devices with disk and
+> agent detail, vulnerable software, per-label host counts, an OS-version
+> rollup, and events for compliance drift, host enrolment and hosts going
+> missing. See [Roadmap](#roadmap) for what's next.
 
 ---
 
@@ -117,8 +118,8 @@ web UI, which is exactly what you want for an unattended integration.
 
 The integration issues `GET` requests only, against these endpoints:
 `/version`, `/config`, `/host_summary`, the policies route, `/hosts`,
-`/software/titles` and `/activities`. It has no code path that writes to Fleet,
-runs queries, or touches hosts.
+`/software/titles`, `/os_versions`, `/labels` and `/activities`. It has no code
+path that writes to Fleet, runs queries, or touches hosts.
 
 If your Observer token cannot read `/config` (used only to detect your licence
 tier), the integration logs one informational message and continues in Free-tier
