@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -57,7 +57,28 @@ class FleetEntity(CoordinatorEntity[FleetSummaryCoordinator]):
         )
 
 
-class FleetPolicyEntity(FleetEntity):
+class DynamicNameMixin:
+    """For entities whose translated name embeds a remote object's name.
+
+    Home Assistant caches ``Entity.name``, which is correct for static names but
+    would freeze ours at whatever the policy or label was called when the entity
+    was first added. Dropping that cache on each refresh lets a rename in Fleet
+    reach the UI, while keeping the surrounding wording translatable rather than
+    hard-coded into an f-string.
+
+    The rename tests are the guard here: if Home Assistant ever stops caching
+    the name in the instance dict, they still pass, and if it changes to a cache
+    this cannot reach, they fail loudly rather than silently going stale.
+    """
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Invalidate the cached name before writing state."""
+        self.__dict__.pop("name", None)
+        super()._handle_coordinator_update()
+
+
+class FleetPolicyEntity(DynamicNameMixin, FleetEntity):
     """Base entity for a single Fleet global policy."""
 
     def __init__(
@@ -85,15 +106,15 @@ class FleetPolicyEntity(FleetEntity):
         return super().available and self.policy is not None
 
     @property
-    def name(self) -> str | None:
-        """Follow the policy's current name in Fleet.
+    def translation_placeholders(self) -> Mapping[str, str]:
+        """Feed the policy's current name into its translated entity name.
 
-        Resolved on every read rather than cached at construction, so a policy
-        renamed in Fleet is renamed in Home Assistant on the next poll.
+        A placeholder rather than an f-string so the surrounding wording stays
+        translatable, and resolved per read so a policy renamed in Fleet is
+        renamed here on the next poll.
         """
-        if (policy := self.policy) is not None:
-            return policy.name
-        return None
+        policy = self.policy
+        return {"policy": policy.name if policy else ""}
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -119,7 +140,7 @@ def label_unique_id(entry_id: str, label_id: int, key: str) -> str:
     return f"{entry_id}_label_{label_id}_{key}"
 
 
-class FleetLabelEntity(CoordinatorEntity[FleetInventoryCoordinator]):
+class FleetLabelEntity(DynamicNameMixin, CoordinatorEntity[FleetInventoryCoordinator]):
     """Base entity for a single Fleet label, on the hub device."""
 
     _attr_has_entity_name = True
@@ -151,15 +172,10 @@ class FleetLabelEntity(CoordinatorEntity[FleetInventoryCoordinator]):
         return super().available and self.label is not None
 
     @property
-    def name(self) -> str | None:
-        """Follow the label's current name in Fleet.
-
-        Resolved on every read, so renaming a label in Fleet renames the entity
-        without orphaning its history.
-        """
-        if (label := self.label) is not None:
-            return label.name
-        return None
+    def translation_placeholders(self) -> Mapping[str, str]:
+        """Feed the label's current name into its translated entity name."""
+        label = self.label
+        return {"label": label.name if label else ""}
 
 
 def host_unique_id(entry_id: str, host_id: int, key: str) -> str:

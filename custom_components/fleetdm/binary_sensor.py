@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 from typing import Any
 
@@ -24,6 +25,10 @@ from .entity import (
     async_setup_dynamic_policy_entities,
     fleet_unique_id,
 )
+
+# Read-only, coordinator-driven: every entity reads from an already-fetched
+# snapshot, so Home Assistant need not serialise updates across them.
+PARALLEL_UPDATES = 0
 
 POLICY_COMPLIANCE_KEY = "compliance"
 HOST_ONLINE_KEY = "online"
@@ -66,7 +71,14 @@ async def async_setup_entry(
         )
 
 
-def _build(factory, coordinator, entry, host_id: int):
+def _build(
+    factory: Callable[
+        [FleetInventoryCoordinator, FleetConfigEntry, int], BinarySensorEntity
+    ],
+    coordinator: FleetInventoryCoordinator,
+    entry: FleetConfigEntry,
+    host_id: int,
+) -> BinarySensorEntity:
     """Construct a per-host entity for the dynamic-entity helper."""
     return factory(coordinator, entry, host_id)
 
@@ -117,6 +129,7 @@ class FleetPolicyBinarySensor(FleetPolicyEntity, BinarySensorEntity):
     """Problem sensor for a single Fleet global policy."""
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_translation_key = "policy"
 
     def __init__(
         self,

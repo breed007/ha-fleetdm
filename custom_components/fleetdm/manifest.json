@@ -7,6 +7,7 @@
   "integration_type": "hub",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/breed007/ha-fleetdm/issues",
+  "quality_scale": "silver",
   "requirements": [],
   "version": "0.3.0"
 }

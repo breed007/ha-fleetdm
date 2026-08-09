@@ -8,11 +8,12 @@ from urllib.parse import urlsplit
 
 import voluptuous as vol
 from homeassistant.config_entries import (
+    ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
@@ -88,7 +89,9 @@ STEP_REAUTH_SCHEMA = vol.Schema(
 )
 
 
-async def _async_validate(hass: Any, url: str, token: str, verify_ssl: bool) -> str:
+async def _async_validate(
+    hass: HomeAssistant, url: str, token: str, verify_ssl: bool
+) -> str:
     """Validate credentials against Fleet and return the normalised base URL.
 
     Raises the API exception types unchanged so callers can map them to form
@@ -240,7 +243,7 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: Any) -> FleetOptionsFlow:
+    def async_get_options_flow(config_entry: ConfigEntry) -> FleetOptionsFlow:
         """Return the options flow handler."""
         return FleetOptionsFlow()
 
