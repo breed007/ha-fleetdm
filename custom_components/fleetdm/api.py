@@ -205,6 +205,8 @@ class FleetHost:
     last_restarted_at: datetime | None
     disk_gigs_available: float | None
     disk_percent_available: int | None
+    mdm_enrollment_status: str
+    mdm_connected: bool
 
     @property
     def is_online(self) -> bool:
@@ -237,6 +239,7 @@ class FleetHost:
             or f"Host {host_id}"
         )
         issues = data.get("issues") or {}
+        mdm = data.get("mdm") or {}
         return cls(
             id=host_id,
             display_name=str(display),
@@ -255,6 +258,11 @@ class FleetHost:
             last_restarted_at=parse_fleet_time(data.get("last_restarted_at")),
             disk_gigs_available=_opt_float(data.get("gigs_disk_space_available")),
             disk_percent_available=_opt_int(data.get("percent_disk_space_available")),
+            # Fleet also exposes disk_encryption_enabled, but only on the
+            # per-host detail endpoint. Reading it would cost one request per
+            # host on every cycle, which is exactly the N+1 this model avoids.
+            mdm_enrollment_status=str(mdm.get("enrollment_status") or "unknown"),
+            mdm_connected=bool(mdm.get("connected_to_fleet", False)),
         )
 
 
@@ -338,6 +346,39 @@ class FleetLabel:
             platform=str(data.get("platform") or ""),
             host_count=int(count),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class FleetOsVersion:
+    """One operating system version present in the fleet."""
+
+    name: str
+    platform: str
+    hosts_count: int
+    vulnerabilities_count: int
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> FleetOsVersion:
+        """Build an OS version entry from a Fleet API payload."""
+        return cls(
+            name=str(data.get("name") or ""),
+            platform=str(data.get("platform") or ""),
+            hosts_count=int(data.get("hosts_count") or 0),
+            vulnerabilities_count=int(data.get("vulnerabilities_count") or 0),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FleetOsVersions:
+    """The fleet's operating system spread, as Fleet aggregates it."""
+
+    versions: list[FleetOsVersion]
+    counts_updated_at: datetime | None
+
+    @property
+    def vulnerable_host_count(self) -> int:
+        """Hosts running an OS version with known vulnerabilities."""
+        return sum(v.hosts_count for v in self.versions if v.vulnerabilities_count)
 
 
 @dataclass(frozen=True, slots=True)
@@ -585,6 +626,20 @@ class FleetClient:
                 FleetSoftwareTitle.from_json(title)
                 for title in (data.get("software_titles") or [])
             ],
+        )
+
+    async def async_get_os_versions(self) -> FleetOsVersions:
+        """Return the fleet's OS spread.
+
+        Aggregated server-side, so this is one request regardless of fleet size.
+        """
+        data = await self._get("/os_versions")
+        return FleetOsVersions(
+            versions=[
+                FleetOsVersion.from_json(item)
+                for item in (data.get("os_versions") or [])
+            ],
+            counts_updated_at=parse_fleet_time(data.get("counts_updated_at")),
         )
 
     async def async_get_labels(self) -> list[FleetLabel]:

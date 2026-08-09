@@ -36,6 +36,7 @@ from .api import (
     normalize_url,
 )
 from .const import (
+    CONF_ACTIVITY_EVENTS,
     CONF_API_TOKEN,
     CONF_INVENTORY_INTERVAL,
     CONF_LABEL_SENSORS,
@@ -46,6 +47,7 @@ from .const import (
     CONF_URL,
     CONF_VERIFY_SSL,
     CONF_VULNERABILITY_SENSORS,
+    DEFAULT_ACTIVITY_EVENTS,
     DEFAULT_INVENTORY_INTERVAL,
     DEFAULT_LABEL_SENSORS,
     DEFAULT_MISSING_AFTER_HOURS,
@@ -332,6 +334,10 @@ class FleetOptionsFlow(OptionsFlow):
                 vol.Required(
                     CONF_LABEL_SENSORS,
                     default=options.get(CONF_LABEL_SENSORS, DEFAULT_LABEL_SENSORS),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_ACTIVITY_EVENTS,
+                    default=options.get(CONF_ACTIVITY_EVENTS, DEFAULT_ACTIVITY_EVENTS),
                 ): BooleanSelector(),
                 vol.Required(
                     CONF_REDACT_HOSTNAMES,

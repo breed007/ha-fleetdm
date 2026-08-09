@@ -14,7 +14,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import Platform
+from homeassistant.const import PERCENTAGE, EntityCategory, Platform, UnitOfInformation
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -55,6 +55,10 @@ POLICY_FAILING_KEY = "failing_hosts"
 HOST_FAILING_POLICIES_KEY = "failing_policies"
 HOST_LAST_RESTARTED_KEY = "last_restarted"
 LABEL_HOSTS_KEY = "hosts"
+HOST_DISK_PERCENT_KEY = "disk_free_percent"
+HOST_DISK_GIGS_KEY = "disk_free_gigs"
+HOST_OSQUERY_KEY = "osquery_version"
+HOST_MDM_KEY = "mdm_status"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -169,9 +173,15 @@ async def async_setup_entry(
             lambda label_id: FleetLabelHostsSensor(inventory, entry, label_id),
         )
 
+    async_add_entities([FleetOsVersionsSensor(inventory, entry)])
+
     for key, factory in (
         (HOST_FAILING_POLICIES_KEY, FleetHostFailingPoliciesSensor),
         (HOST_LAST_RESTARTED_KEY, FleetHostLastRestartedSensor),
+        (HOST_DISK_PERCENT_KEY, FleetHostDiskPercentSensor),
+        (HOST_DISK_GIGS_KEY, FleetHostDiskFreeSensor),
+        (HOST_OSQUERY_KEY, FleetHostOsqueryVersionSensor),
+        (HOST_MDM_KEY, FleetHostMdmStatusSensor),
     ):
         async_setup_dynamic_host_entities(
             hass,
@@ -411,3 +421,182 @@ class FleetHostLastRestartedSensor(FleetHostEntity, SensorEntity):
         if (host := self.host) is None:
             return None
         return host.last_restarted_at
+
+
+class FleetOsVersionsSensor(FleetInventoryEntity, SensorEntity):
+    """How many hosts run an OS version with known vulnerabilities.
+
+    Fleet aggregates this server-side, so the whole picture costs one request
+    regardless of fleet size. The state is the number of *hosts* affected
+    rather than the number of versions, because that is the number worth
+    acting on; the full spread is in the attributes.
+    """
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UNIT_HOSTS
+    _attr_translation_key = "os_versions_vulnerable"
+
+    def __init__(
+        self, coordinator: FleetInventoryCoordinator, entry: FleetConfigEntry
+    ) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = fleet_unique_id(entry.entry_id, "os_versions_vulnerable")
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the number of hosts on a vulnerable OS version."""
+        data = self.coordinator.data
+        if data is None or data.os_versions is None:
+            return None
+        return data.os_versions.vulnerable_host_count
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """List every OS version in the fleet, most common first."""
+        data = self.coordinator.data
+        if data is None or data.os_versions is None:
+            return None
+        versions = sorted(
+            data.os_versions.versions,
+            key=lambda v: (-v.hosts_count, v.name),
+        )
+        return {
+            "distinct_versions": len(versions),
+            "counts_updated_at": (
+                data.os_versions.counts_updated_at.isoformat()
+                if data.os_versions.counts_updated_at
+                else None
+            ),
+            "versions": [
+                {
+                    "name": v.name,
+                    "platform": v.platform,
+                    "hosts_count": v.hosts_count,
+                    "vulnerabilities_count": v.vulnerabilities_count,
+                }
+                for v in versions
+            ],
+        }
+
+
+class FleetHostDiskPercentSensor(FleetHostEntity, SensorEntity):
+    """Free disk space on a host, as a percentage."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_translation_key = "host_disk_free_percent"
+
+    def __init__(
+        self,
+        coordinator: FleetInventoryCoordinator,
+        entry: FleetConfigEntry,
+        host_id: int,
+    ) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, entry, host_id, HOST_DISK_PERCENT_KEY)
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the percentage of disk still free."""
+        if (host := self.host) is None:
+            return None
+        return host.disk_percent_available
+
+
+class FleetHostDiskFreeSensor(FleetHostEntity, SensorEntity):
+    """Free disk space on a host, in gigabytes.
+
+    Disabled by default: the percentage is the more useful number to alert on,
+    and this would otherwise double the per-host sensor count.
+    """
+
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfInformation.GIGABYTES
+    _attr_suggested_display_precision = 1
+    _attr_entity_registry_enabled_default = False
+    _attr_translation_key = "host_disk_free_gigs"
+
+    def __init__(
+        self,
+        coordinator: FleetInventoryCoordinator,
+        entry: FleetConfigEntry,
+        host_id: int,
+    ) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, entry, host_id, HOST_DISK_GIGS_KEY)
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the gigabytes still free."""
+        if (host := self.host) is None:
+            return None
+        return host.disk_gigs_available
+
+
+class FleetHostOsqueryVersionSensor(FleetHostEntity, SensorEntity):
+    """Which osquery build a host is running.
+
+    Diagnostic and disabled by default: useful when chasing why one host
+    reports differently from the rest, uninteresting the rest of the time.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+    _attr_translation_key = "host_osquery_version"
+
+    def __init__(
+        self,
+        coordinator: FleetInventoryCoordinator,
+        entry: FleetConfigEntry,
+        host_id: int,
+    ) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, entry, host_id, HOST_OSQUERY_KEY)
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the reported osquery version."""
+        if (host := self.host) is None:
+            return None
+        return host.osquery_version or None
+
+
+class FleetHostMdmStatusSensor(FleetHostEntity, SensorEntity):
+    """A host's MDM enrolment status as Fleet reports it.
+
+    Diagnostic and disabled by default: on a fleet not using Fleet's MDM every
+    one of these reads "Off", which is honest but not worth an entity each.
+
+    Deliberately does not report disk encryption. Fleet exposes that only on
+    the per-host detail endpoint, so including it would cost one request per
+    host on every cycle.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+    _attr_translation_key = "host_mdm_status"
+
+    def __init__(
+        self,
+        coordinator: FleetInventoryCoordinator,
+        entry: FleetConfigEntry,
+        host_id: int,
+    ) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, entry, host_id, HOST_MDM_KEY)
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the MDM enrolment status."""
+        if (host := self.host) is None:
+            return None
+        return host.mdm_enrollment_status
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Whether this host is actually talking to Fleet's MDM."""
+        if (host := self.host) is None:
+            return None
+        return {"connected_to_fleet": host.mdm_connected}

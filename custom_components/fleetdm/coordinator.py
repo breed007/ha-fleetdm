@@ -35,17 +35,20 @@ from .api import (
     FleetHost,
     FleetHostSummary,
     FleetLabel,
+    FleetOsVersions,
     FleetPolicy,
     FleetVulnerableSoftware,
 )
 from .const import (
     ACTIVITY_TYPES_HOST_ENROLLED,
+    CONF_ACTIVITY_EVENTS,
     CONF_INVENTORY_INTERVAL,
     CONF_LABEL_SENSORS,
     CONF_MISSING_AFTER_HOURS,
     CONF_PER_HOST_ENTITIES,
     CONF_SUMMARY_INTERVAL,
     CONF_VULNERABILITY_SENSORS,
+    DEFAULT_ACTIVITY_EVENTS,
     DEFAULT_INVENTORY_INTERVAL,
     DEFAULT_LABEL_SENSORS,
     DEFAULT_MISSING_AFTER_HOURS,
@@ -53,10 +56,12 @@ from .const import (
     DEFAULT_SUMMARY_INTERVAL,
     DEFAULT_VULNERABILITY_SENSORS,
     DOMAIN,
+    EVENT_ACTIVITY,
     EVENT_HOST_ENROLLED,
     EVENT_HOST_MISSING,
     EVENT_POLICY_FAILING,
     EVENT_POLICY_RECOVERED,
+    EVENT_TYPE_ACTIVITY,
     EVENT_TYPE_HOST_ENROLLED,
     EVENT_TYPE_HOST_WENT_MISSING,
     EVENT_TYPE_POLICY_NEWLY_FAILING,
@@ -83,6 +88,7 @@ _BUS_EVENT_FOR_TYPE = {
     EVENT_TYPE_POLICY_RECOVERED: EVENT_POLICY_RECOVERED,
     EVENT_TYPE_HOST_ENROLLED: EVENT_HOST_ENROLLED,
     EVENT_TYPE_HOST_WENT_MISSING: EVENT_HOST_MISSING,
+    EVENT_TYPE_ACTIVITY: EVENT_ACTIVITY,
 }
 
 
@@ -321,6 +327,7 @@ class FleetInventoryData:
     hosts: list[FleetHost] = field(default_factory=list)
     vulnerable: FleetVulnerableSoftware | None = None
     labels: list[FleetLabel] = field(default_factory=list)
+    os_versions: FleetOsVersions | None = None
     events: list[FleetDriftEvent] = field(default_factory=list)
 
     @property
@@ -407,6 +414,9 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
             labels: list[FleetLabel] = []
             if self.config_entry.options.get(CONF_LABEL_SENSORS, DEFAULT_LABEL_SENSORS):
                 labels = await self.client.async_get_labels()
+            # Aggregated server-side, so this is one request whatever the fleet
+            # size — cheap enough not to be worth its own option.
+            os_versions = await self.client.async_get_os_versions()
         except FleetAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except FleetError as err:
@@ -414,7 +424,11 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
 
         events = await self._compute_events(hosts, activities)
         return FleetInventoryData(
-            hosts=hosts, vulnerable=vulnerable, labels=labels, events=events
+            hosts=hosts,
+            vulnerable=vulnerable,
+            labels=labels,
+            os_versions=os_versions,
+            events=events,
         )
 
     async def _compute_events(
@@ -448,15 +462,24 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         events: list[FleetDriftEvent] = []
         by_id = {host.id: host for host in hosts}
 
+        emit_activities = self.config_entry.options.get(
+            CONF_ACTIVITY_EVENTS, DEFAULT_ACTIVITY_EVENTS
+        )
         for activity in sorted(activities, key=lambda a: a.id):
-            if activity.type not in ACTIVITY_TYPES_HOST_ENROLLED:
-                continue
-            events.append(
-                FleetDriftEvent(
-                    event_type=EVENT_TYPE_HOST_ENROLLED,
-                    data=_enrolment_event_payload(activity),
+            if activity.type in ACTIVITY_TYPES_HOST_ENROLLED:
+                events.append(
+                    FleetDriftEvent(
+                        event_type=EVENT_TYPE_HOST_ENROLLED,
+                        data=_enrolment_event_payload(activity),
+                    )
                 )
-            )
+            elif emit_activities:
+                events.append(
+                    FleetDriftEvent(
+                        event_type=EVENT_TYPE_ACTIVITY,
+                        data=_activity_event_payload(activity),
+                    )
+                )
 
         # Only hosts still present in Fleet: one deleted while missing is gone,
         # not newly missing.
@@ -539,6 +562,22 @@ def _enrolment_event_payload(activity: FleetActivity) -> dict[str, Any]:
         "host_serial": details.get("host_serial"),
         "activity_id": activity.id,
         "enrolled_at": activity.created_at.isoformat() if activity.created_at else None,
+    }
+
+
+def _activity_event_payload(activity: FleetActivity) -> dict[str, Any]:
+    """Build the payload for a generic Fleet audit activity.
+
+    The Fleet activity type travels in the payload rather than becoming its own
+    Home Assistant event type. Fleet's audit taxonomy grows between releases,
+    and enumerating it here would mean new activity types silently going
+    nowhere until this integration caught up.
+    """
+    return {
+        "activity_id": activity.id,
+        "activity_type": activity.type,
+        "created_at": activity.created_at.isoformat() if activity.created_at else None,
+        "details": activity.details,
     }
 
 

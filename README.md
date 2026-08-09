@@ -36,6 +36,7 @@ recent Home Assistant releases plus that floor.
 | `sensor.fleet_<policy_name>_failing_hosts` | sensor | Failing host count per policy, for graphing. **Disabled by default** |
 | `sensor.fleet_vulnerable_software` | sensor | Software titles with known CVEs. Attribute lists the most widespread |
 | `sensor.fleet_label_<name>` | sensor | Hosts matching each Fleet label. Built-in labels are **disabled by default** |
+| `sensor.fleet_hosts_on_vulnerable_os` | sensor | Hosts running an OS version with known CVEs. Attribute lists the full OS spread |
 | `event.fleet_fleet_events` | event | Timeline of compliance and host events |
 
 ### Per host
@@ -48,12 +49,20 @@ Each enrolled host becomes its own device, linked to the Fleet hub, with a
 | `binary_sensor.<host>_online` | binary_sensor (`connectivity`) | Whether Fleet has heard from it recently |
 | `binary_sensor.<host>_missing` | binary_sensor (`problem`) | Unseen longer than your configured window |
 | `sensor.<host>_failing_policies` | sensor | How many policies this host fails |
+| `sensor.<host>_disk_free` | sensor (`%`) | Free disk space |
 | `sensor.<host>_last_restarted` | sensor (`timestamp`) | Boot time. **Disabled by default** |
+| `sensor.<host>_disk_free_space` | sensor (`GB`) | Free disk in gigabytes. **Disabled by default** |
+| `sensor.<host>_osquery_version` | sensor | Agent build, diagnostic. **Disabled by default** |
+| `sensor.<host>_mdm_status` | sensor | MDM enrolment, diagnostic. **Disabled by default** |
 
-Per-host entities are created automatically for fleets of **50 hosts or fewer**.
-Above that they are off until you turn them on, so adding the integration to a
-large fleet cannot create thousands of entities by surprise. Either way the
-choice is yours in the options.
+Per-host entities default to **Auto**: on for fleets of 50 hosts or fewer, off
+above that, so adding the integration to a large fleet cannot create thousands
+of entities by surprise. A fleet that grows past 50 while set to Auto will have
+its per-host entities removed — set the option to **Always** to keep them.
+
+Fleet reports per-host disk *encryption* only on its per-host detail endpoint,
+so surfacing it would cost one request per host on every cycle. It is left out
+deliberately rather than paying that.
 
 Every policy entity carries `passing_host_count`, `failing_host_count`,
 `critical`, `platform`, `resolution` and `host_count_updated_at` as attributes.
@@ -156,6 +165,7 @@ IP, and turning verification off to work around that is the wrong fix.
 | Treat a host as missing after | 24 h | Independent of Fleet's own 30-day missing bucket |
 | Vulnerable software sensor | on | Turn off to skip the software query entirely |
 | Label host-count sensors | on | One per label. Fleet's built-ins are created but disabled |
+| Fleet activity events | off | Fire an event for every audit entry. Noisy on an active Fleet |
 | Redact hostnames in diagnostics | on | See [Diagnostics](#diagnostics) |
 
 ---
@@ -192,8 +202,15 @@ per poll.
 Two surfaces, both fired together:
 
 - **Bus events** — `fleetdm_policy_failing`, `fleetdm_policy_recovered`,
-  `fleetdm_host_enrolled` and `fleetdm_host_missing`.
-  **Use these for automations.** Each carries a full payload.
+  `fleetdm_host_enrolled`, `fleetdm_host_missing`, and (opt-in)
+  `fleetdm_activity`. **Use these for automations.** Each carries a full
+  payload.
+
+  `fleetdm_activity` covers the rest of Fleet's audit feed — script runs,
+  logins, policy edits. It carries the Fleet activity type in
+  `trigger.event.data.activity_type` rather than becoming its own Home
+  Assistant event type, because Fleet's audit taxonomy grows between releases
+  and enumerating it here would mean new types silently going nowhere.
 - **`event.fleet_fleet_events`** — a UI/history timeline. Because an event
   entity holds one event at a time, prefer the bus events when several policies
   may flip in the same poll.
@@ -367,9 +384,9 @@ compliance entities, compliance drift events, diagnostics.
 **Phase 2 (current)** — per-host devices and entities with size gating,
 vulnerable software sensor, `host_enrolled` and `host_went_missing` events.
 
-**Still open from Phase 2** — team filtering, which is Fleet Premium only and
-so does nothing on Free. Opinions from anyone running a multi-team fleet would
-genuinely shape it.
+**Still open** — team filtering (Fleet Premium only, so it does nothing on
+Free), per-host disk encryption (needs a request per host), and webhook push
+for near-real-time events instead of polling latency.
 
 **Phase 3** — optionally running *pre-existing saved queries* from Home
 Assistant. Never arbitrary SQL, and it will require a higher-privilege token

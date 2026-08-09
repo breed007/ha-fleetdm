@@ -13,6 +13,7 @@ from .conftest import (
     API,
     FREE_CONFIG_RESPONSE,
     HOST_LAPTOP,
+    OS_VERSIONS_RESPONSE,
     POLICY_BITLOCKER,
     POLICY_GATEKEEPER,
     PREMIUM_CONFIG_RESPONSE,
@@ -219,6 +220,7 @@ async def test_forbidden_config_endpoint_degrades_to_free(
     aioclient_mock.get(f"{API}/activities", json=activities_payload())
     aioclient_mock.get(f"{API}/software/titles", json=VULNERABLE_SOFTWARE_RESPONSE)
     aioclient_mock.get(f"{API}/labels", json=labels_payload())
+    aioclient_mock.get(f"{API}/os_versions", json=OS_VERSIONS_RESPONSE)
     mock_config_entry.add_to_hass(hass)
 
     assert await hass.config_entries.async_setup(mock_config_entry.entry_id)

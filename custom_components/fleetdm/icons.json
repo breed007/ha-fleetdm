@@ -30,6 +30,24 @@
       },
       "label_hosts": {
         "default": "mdi:label-outline"
+      },
+      "os_versions_vulnerable": {
+        "default": "mdi:harddisk-remove"
+      },
+      "host_disk_free_percent": {
+        "default": "mdi:harddisk"
+      },
+      "host_disk_free_gigs": {
+        "default": "mdi:harddisk"
+      },
+      "host_osquery_version": {
+        "default": "mdi:database-search-outline"
+      },
+      "host_mdm_status": {
+        "default": "mdi:cellphone-cog"
+      },
+      "policy_failing_hosts": {
+        "default": "mdi:shield-alert-outline"
       }
     },
     "binary_sensor": {
