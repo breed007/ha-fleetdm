@@ -40,6 +40,16 @@ MAX_MISSING_AFTER_HOURS: Final = 720
 # Fleet size above which per-host entities must be opted into explicitly.
 PER_HOST_ENTITY_THRESHOLD: Final = 50
 
+# Per-host entities are tri-state rather than a plain toggle. A boolean forced
+# the options form to write an explicit value every time it was saved for any
+# reason, which permanently disabled the size rule as a side effect of changing
+# an unrelated setting.
+PER_HOST_AUTO: Final = "auto"
+PER_HOST_ON: Final = "on"
+PER_HOST_OFF: Final = "off"
+PER_HOST_CHOICES: Final = [PER_HOST_AUTO, PER_HOST_ON, PER_HOST_OFF]
+DEFAULT_PER_HOST_ENTITIES: Final = PER_HOST_AUTO
+
 # Bus event types. Fired alongside the `event` entity so that automations can
 # trigger on a plain `event` trigger with a full payload.
 EVENT_POLICY_FAILING: Final = "fleetdm_policy_failing"

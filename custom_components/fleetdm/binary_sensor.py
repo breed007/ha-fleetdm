@@ -15,11 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from . import FleetConfigEntry
-from .coordinator import (
-    FleetInventoryCoordinator,
-    FleetSummaryCoordinator,
-    per_host_entities_enabled,
-)
+from .coordinator import FleetInventoryCoordinator, FleetSummaryCoordinator
 from .entity import (
     FleetEntity,
     FleetHostEntity,
@@ -55,10 +51,6 @@ async def async_setup_entry(
     )
 
     inventory = entry.runtime_data.inventory
-    host_count = len(inventory.data.hosts) if inventory.data else 0
-    if not per_host_entities_enabled(entry, host_count):
-        return
-
     for key, factory in (
         (HOST_ONLINE_KEY, FleetHostOnlineBinarySensor),
         (HOST_MISSING_KEY, FleetHostMissingBinarySensor),
@@ -212,7 +204,8 @@ class FleetHostMissingBinarySensor(FleetHostBinarySensorBase):
     @property
     def is_on(self) -> bool | None:
         """Whether the host has been unseen past the threshold."""
-        host = self.host
-        if host is None or host.seen_time is None:
+        if (host := self.host) is None:
             return None
-        return host.seen_time < dt_util.utcnow() - self.coordinator.missing_after
+        # Shared with the coordinator's event logic, so the sensor and the
+        # host-missing event can never disagree about what "missing" means.
+        return host.is_missing_at(dt_util.utcnow() - self.coordinator.missing_after)

@@ -108,9 +108,11 @@ def host(
     seen_hours_ago: float = 0.1,
     failing_policies: int = 0,
     platform: str = "darwin",
+    seen: bool = True,
+    enrolled_hours_ago: float | None = None,
 ) -> dict[str, Any]:
     """Build a host payload shaped like a real Fleet host list entry."""
-    seen = dt_util.utcnow() - timedelta(hours=seen_hours_ago)
+    seen_at = dt_util.utcnow() - timedelta(hours=seen_hours_ago)
     return {
         "id": host_id,
         "display_name": name,
@@ -122,8 +124,15 @@ def host(
         "primary_ip": f"192.168.10.{host_id}",
         "hardware_model": "MacBookPro18,3",
         "osquery_version": "5.12.1",
-        "seen_time": seen.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "seen_time": seen_at.strftime("%Y-%m-%dT%H:%M:%SZ") if seen else None,
         "last_restarted_at": "2026-08-01T09:00:00Z",
+        "last_enrolled_at": (
+            (dt_util.utcnow() - timedelta(hours=enrolled_hours_ago)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            if enrolled_hours_ago is not None
+            else None
+        ),
         "gigs_disk_space_available": 210.5,
         "percent_disk_space_available": 42,
         "issues": {"failing_policies_count": failing_policies, "total_issues_count": 0},

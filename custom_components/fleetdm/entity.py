@@ -7,6 +7,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -14,7 +15,11 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import FleetHost, FleetLabel, FleetPolicy
 from .const import DOMAIN, MANUFACTURER
-from .coordinator import FleetInventoryCoordinator, FleetSummaryCoordinator
+from .coordinator import (
+    FleetInventoryCoordinator,
+    FleetSummaryCoordinator,
+    per_host_entities_enabled,
+)
 
 
 def policy_unique_id(entry_id: str, policy_id: int, key: str) -> str:
@@ -205,7 +210,7 @@ class FleetHostEntity(CoordinatorEntity[FleetInventoryCoordinator]):
 
         host = self.host
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.entry_id}_host_{host_id}")},
+            identifiers={(DOMAIN, host_device_identifier(entry.entry_id, host_id))},
             name=host.display_name if host else f"Host {host_id}",
             manufacturer=MANUFACTURER,
             model=_host_model(host),
@@ -230,6 +235,85 @@ class FleetHostEntity(CoordinatorEntity[FleetInventoryCoordinator]):
         is what reports it as offline.
         """
         return super().available and self.host is not None
+
+
+def host_device_identifier(entry_id: str, host_id: int) -> str:
+    """Build the device registry identifier for a host."""
+    return f"{entry_id}_host_{host_id}"
+
+
+def host_id_from_identifiers(
+    entry_id: str, identifiers: set[tuple[str, str]]
+) -> int | None:
+    """Extract the Fleet host ID from a device's identifiers.
+
+    Returns None for anything that is not one of this entry's host devices,
+    including the hub device itself.
+    """
+    prefix = f"{entry_id}_host_"
+    for domain, value in identifiers:
+        if domain == DOMAIN and value.startswith(prefix):
+            try:
+                return int(value.removeprefix(prefix))
+            except ValueError:
+                return None
+    return None
+
+
+@callback
+def async_setup_host_device_sync(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: FleetInventoryCoordinator,
+) -> None:
+    """Keep host devices in step with Fleet.
+
+    Entities alone are not enough. Removing a host's entities leaves an empty
+    device behind in the registry, and device metadata captured when the entity
+    was constructed goes stale the moment the host is renamed or its OS is
+    upgraded. This reconciles both on every inventory refresh.
+
+    Registered once per config entry rather than per platform, so four platforms
+    do not each redo the same work.
+    """
+
+    @callback
+    def _sync_devices() -> None:
+        if coordinator.data is None:
+            return
+
+        registry = dr.async_get(hass)
+        hosts = coordinator.data.hosts_by_id
+
+        for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+            host_id = host_id_from_identifiers(entry.entry_id, device.identifiers)
+            if host_id is None:
+                # The hub device, which lives as long as the config entry.
+                continue
+
+            host = hosts.get(host_id)
+            if host is None:
+                # Gone from Fleet. Detaching the config entry deletes the device
+                # when no other entry claims it.
+                registry.async_update_device(
+                    device.id, remove_config_entry_id=entry.entry_id
+                )
+                continue
+
+            # Only write when something actually changed: async_update_device
+            # fires registry events, and a no-op write on every poll is noise.
+            updates: dict[str, Any] = {}
+            if device.name != host.display_name:
+                updates["name"] = host.display_name
+            if (model := _host_model(host)) and device.model != model:
+                updates["model"] = model
+            if host.os_version and device.sw_version != host.os_version:
+                updates["sw_version"] = host.os_version
+            if updates:
+                registry.async_update_device(device.id, **updates)
+
+    entry.async_on_unload(coordinator.async_add_listener(_sync_devices))
+    _sync_devices()
 
 
 def _host_model(host: FleetHost | None) -> str | None:
@@ -294,14 +378,25 @@ def async_setup_dynamic_host_entities(
     key: str,
     factory: Callable[[int], Any],
 ) -> None:
-    """Track hosts as they enrol in and leave Fleet."""
+    """Track hosts as they enrol in and leave Fleet.
+
+    The size gate is applied here rather than once at platform setup, so a
+    fleet that grows past the threshold stops gaining per-host entities instead
+    of quietly continuing to add them.
+    """
+
+    def _gated_host_ids(data: Any) -> set[int]:
+        if not per_host_entities_enabled(entry, len(data.hosts)):
+            return set()
+        return set(data.hosts_by_id)
+
     async_setup_dynamic_entities(
         hass,
         entry,
         coordinator,
         async_add_entities,
         platform,
-        lambda data: set(data.hosts_by_id),
+        _gated_host_ids,
         lambda host_id: host_unique_id(entry.entry_id, host_id, key),
         factory,
     )

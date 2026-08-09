@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 
@@ -22,6 +23,7 @@ from .const import (
     STORAGE_VERSION,
 )
 from .coordinator import FleetInventoryCoordinator, FleetSummaryCoordinator
+from .entity import async_setup_host_device_sync, host_id_from_identifiers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,9 +63,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: FleetConfigEntry) -> boo
         client=client, summary=summary, inventory=inventory
     )
 
+    async_setup_host_device_sync(hass, entry, inventory)
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    entry: FleetConfigEntry,
+    device: dr.DeviceEntry,
+) -> bool:
+    """Allow deleting a host device from the UI once Fleet has dropped it.
+
+    Refuses while the host still exists, since the device would simply be
+    recreated on the next refresh, and refuses for the hub device, which
+    belongs to the config entry itself.
+    """
+    host_id = host_id_from_identifiers(entry.entry_id, device.identifiers)
+    if host_id is None:
+        return False
+    inventory = entry.runtime_data.inventory
+    if inventory.data is None:
+        return False
+    return host_id not in inventory.data.hosts_by_id
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: FleetConfigEntry) -> bool:

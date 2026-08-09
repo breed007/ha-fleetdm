@@ -4,14 +4,19 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.fleetdm.const import (
     CONF_MISSING_AFTER_HOURS,
     CONF_PER_HOST_ENTITIES,
+    CONF_SUMMARY_INTERVAL,
     DOMAIN,
+    PER_HOST_AUTO,
     PER_HOST_ENTITY_THRESHOLD,
+    PER_HOST_OFF,
+    PER_HOST_ON,
 )
 
 from .conftest import HOST_DESKTOP, HOST_LAPTOP, host, hosts_payload, mock_fleet
@@ -168,4 +173,169 @@ async def test_small_fleet_honours_explicit_opt_out(
     assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
+    assert hass.states.get("binary_sensor.ada_laptop_online") is None
+
+
+async def test_never_seen_host_is_missing_after_grace(
+    hass, aioclient_mock, mock_config_entry
+) -> None:
+    """A host that enrolled long ago and never checked in is missing.
+
+    Regression: hosts with no seen_time were excluded from the missing set
+    entirely, so the most-missing host possible could never trip the sensor.
+    """
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        mock_config_entry, options={CONF_MISSING_AFTER_HOURS: 4}
+    )
+    mock_fleet(
+        aioclient_mock,
+        hosts=hosts_payload(
+            host(1, "Never Seen", seen=False, enrolled_hours_ago=50),
+            host(2, "Just Enrolled", seen=False, enrolled_hours_ago=0.2),
+            host(3, "No Timestamps At All", seen=False),
+        ),
+    )
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Enrolled two days ago, still silent.
+    assert hass.states.get("binary_sensor.never_seen_missing").state == "on"
+    # Enrolled minutes ago: give it a chance to report before crying wolf.
+    assert hass.states.get("binary_sensor.just_enrolled_missing").state == "off"
+    # Nothing at all suggests this host is alive.
+    assert hass.states.get("binary_sensor.no_timestamps_at_all_missing").state == "on"
+
+
+async def test_deleted_host_removes_device(
+    hass, aioclient_mock, mock_config_entry
+) -> None:
+    """A host dropped from Fleet must not leave an empty device behind.
+
+    Regression: entities were purged but the device registry entry survived,
+    and nothing implemented async_remove_config_entry_device either, so it
+    could not be cleared from the UI.
+    """
+    entry = await setup_with(hass, mock_config_entry, aioclient_mock)
+    devices = dr.async_get(hass)
+    identifier = {(DOMAIN, f"{entry.entry_id}_host_2")}
+    assert devices.async_get_device(identifiers=identifier) is not None
+
+    await inventory_poll(hass, entry, aioclient_mock, hosts=hosts_payload(HOST_LAPTOP))
+
+    assert devices.async_get_device(identifiers=identifier) is None
+    # The surviving host and the hub are untouched.
+    assert (
+        devices.async_get_device(identifiers={(DOMAIN, f"{entry.entry_id}_host_1")})
+        is not None
+    )
+    assert devices.async_get_device(identifiers={(DOMAIN, entry.entry_id)}) is not None
+
+
+async def test_host_device_metadata_follows_fleet(
+    hass, aioclient_mock, mock_config_entry
+) -> None:
+    """Renames and OS upgrades reach the device without a reload.
+
+    Regression: DeviceInfo was captured once at entity construction, so a host
+    renamed or upgraded in Fleet kept stale details until the entry reloaded.
+    """
+    entry = await setup_with(hass, mock_config_entry, aioclient_mock)
+    devices = dr.async_get(hass)
+    identifier = {(DOMAIN, f"{entry.entry_id}_host_1")}
+    assert devices.async_get_device(identifiers=identifier).name == "Ada Laptop"
+
+    renamed = host(1, "Ada Workstation")
+    renamed["os_version"] = "macOS 15.6"
+    renamed["hardware_model"] = "Mac15,3"
+    await inventory_poll(
+        hass, entry, aioclient_mock, hosts=hosts_payload(renamed, HOST_DESKTOP)
+    )
+
+    device = devices.async_get_device(identifiers=identifier)
+    assert device.name == "Ada Workstation"
+    assert device.sw_version == "macOS 15.6"
+    assert device.model == "Mac15,3 · darwin"
+
+
+async def test_device_removal_allowed_only_for_departed_hosts(
+    hass, aioclient_mock, mock_config_entry
+) -> None:
+    """The UI may delete a gone host's device, but not a live one or the hub."""
+    from custom_components.fleetdm import async_remove_config_entry_device
+
+    entry = await setup_with(hass, mock_config_entry, aioclient_mock)
+    devices = dr.async_get(hass)
+
+    live = devices.async_get_device(identifiers={(DOMAIN, f"{entry.entry_id}_host_1")})
+    hub = devices.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+
+    # A host Fleet still reports would just be recreated on the next refresh.
+    assert await async_remove_config_entry_device(hass, entry, live) is False
+    # The hub belongs to the config entry itself.
+    assert await async_remove_config_entry_device(hass, entry, hub) is False
+
+    stale = dr.DeviceEntry(
+        identifiers={(DOMAIN, f"{entry.entry_id}_host_999")},
+        config_entry_id=entry.entry_id,
+    )
+    assert await async_remove_config_entry_device(hass, entry, stale) is True
+
+
+async def test_saving_options_preserves_auto_gating(hass, setup_integration) -> None:
+    """Saving the options form must not silently disable the size rule.
+
+    Regression: the per-host option was a boolean with a computed default, so
+    submitting the form to change anything at all wrote an explicit value and
+    killed auto-gating permanently.
+    """
+    result = await hass.config_entries.options.async_init(setup_integration.entry_id)
+    # Change something unrelated, leaving every other field at its default.
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {**result["data_schema"]({}), CONF_SUMMARY_INTERVAL: 90},
+    )
+    await hass.async_block_till_done()
+
+    assert setup_integration.options[CONF_SUMMARY_INTERVAL] == 90
+    assert setup_integration.options[CONF_PER_HOST_ENTITIES] == PER_HOST_AUTO
+
+
+@pytest.mark.parametrize(
+    ("value", "expect_entities"),
+    [(PER_HOST_ON, True), (PER_HOST_OFF, False)],
+)
+async def test_explicit_tri_state_values(
+    hass, aioclient_mock, mock_config_entry, value, expect_entities
+) -> None:
+    """The explicit choices win regardless of fleet size."""
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        mock_config_entry, options={CONF_PER_HOST_ENTITIES: value}
+    )
+    mock_fleet(aioclient_mock)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    exists = hass.states.get("binary_sensor.ada_laptop_online") is not None
+    assert exists is expect_entities
+
+
+async def test_auto_gate_reevaluated_as_fleet_grows(
+    hass, aioclient_mock, mock_config_entry
+) -> None:
+    """In auto mode, crossing the threshold stops per-host entities.
+
+    Regression: the gate was only consulted at platform setup, so a fleet that
+    grew past the threshold kept adding per-host entities indefinitely.
+    """
+    entry = await setup_with(hass, mock_config_entry, aioclient_mock)
+    assert hass.states.get("binary_sensor.ada_laptop_online") is not None
+
+    many = hosts_payload(
+        *(host(i, f"Host {i}") for i in range(1, PER_HOST_ENTITY_THRESHOLD + 2))
+    )
+    await inventory_poll(hass, entry, aioclient_mock, hosts=many)
+
+    assert hass.states.get("binary_sensor.host_1_online") is None
     assert hass.states.get("binary_sensor.ada_laptop_online") is None
