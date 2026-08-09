@@ -59,6 +59,17 @@ class FleetEventEntity(FleetEntity, EventEntity):
         self._inventory = inventory
         self._attr_unique_id = fleet_unique_id(entry.entry_id, "events")
 
+    @property
+    def available(self) -> bool:
+        """Available only while both coordinators are healthy.
+
+        This entity carries events from two sources. Reporting available on the
+        strength of the summary coordinator alone would mean a persistently
+        failing inventory coordinator silently stopped host-enrolled and
+        host-missing events while the entity still looked fine.
+        """
+        return super().available and self._inventory.last_update_success
+
     async def async_added_to_hass(self) -> None:
         """Subscribe to the inventory coordinator as well as the summary one."""
         await super().async_added_to_hass()
@@ -78,6 +89,10 @@ class FleetEventEntity(FleetEntity, EventEntity):
         """Replay this cycle's host events onto the entity."""
         if (data := self._inventory.data) is not None:
             self._replay(data.events)
+        # Write state even when there were no events: availability depends on
+        # this coordinator, and a cycle that merely failed produces no events to
+        # write on its behalf.
+        self.async_write_ha_state()
 
     @callback
     def _replay(self, events) -> None:

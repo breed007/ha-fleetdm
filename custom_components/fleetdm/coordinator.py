@@ -49,6 +49,7 @@ from .const import (
     DEFAULT_INVENTORY_INTERVAL,
     DEFAULT_LABEL_SENSORS,
     DEFAULT_MISSING_AFTER_HOURS,
+    DEFAULT_PER_HOST_ENTITIES,
     DEFAULT_SUMMARY_INTERVAL,
     DEFAULT_VULNERABILITY_SENSORS,
     DOMAIN,
@@ -61,12 +62,20 @@ from .const import (
     EVENT_TYPE_POLICY_NEWLY_FAILING,
     EVENT_TYPE_POLICY_RECOVERED,
     PER_HOST_ENTITY_THRESHOLD,
+    PER_HOST_OFF,
+    PER_HOST_ON,
     STORAGE_KEY_INVENTORY_TEMPLATE,
     STORAGE_KEY_TEMPLATE,
     STORAGE_VERSION,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# How many summary polls between re-reads of the Fleet version and licence
+# tier. At the default 60s interval this is roughly hourly: often enough that a
+# server upgrade or licence change is picked up the same day, rare enough to be
+# invisible in request volume.
+METADATA_REFRESH_EVERY = 60
 
 # Bus event type fired for each `event` entity event type.
 _BUS_EVENT_FOR_TYPE = {
@@ -149,6 +158,7 @@ class FleetSummaryCoordinator(DataUpdateCoordinator[FleetData]):
             STORAGE_KEY_TEMPLATE.format(entry_id=entry.entry_id),
         )
         self._failing_policy_ids: set[int] = set()
+        self._polls_since_metadata = 0
         # False until a baseline has been established, either from storage or
         # from the first successful poll. See _compute_drift for why this
         # matters.
@@ -157,17 +167,9 @@ class FleetSummaryCoordinator(DataUpdateCoordinator[FleetData]):
     async def _async_setup(self) -> None:
         """One-time setup, run before the first refresh.
 
-        Fetches server metadata that does not change poll-to-poll, and restores
-        the persisted drift baseline.
+        Fetches server metadata and restores the persisted drift baseline.
         """
-        try:
-            self.version = await self.client.async_get_version()
-        except FleetAuthError as err:
-            raise ConfigEntryAuthFailed(str(err)) from err
-        except FleetError as err:
-            raise UpdateFailed(str(err)) from err
-
-        self.premium = await self.client.async_is_premium()
+        await self._async_refresh_server_metadata()
 
         stored = await self._store.async_load()
         if stored is not None:
@@ -180,8 +182,32 @@ class FleetSummaryCoordinator(DataUpdateCoordinator[FleetData]):
                 len(self._failing_policy_ids),
             )
 
+    async def _async_refresh_server_metadata(self) -> None:
+        """Read the Fleet version and licence tier.
+
+        Both change out from under us: a Fleet upgrade changes the version shown
+        on the hub device, and a licence change flips which policies the
+        compliance sensor watches. Neither is worth a request every cycle, but
+        fetching them once at setup meant they stayed wrong until a reload.
+        """
+        try:
+            self.version = await self.client.async_get_version()
+            # Inside the same guard: a 401 here means the token is bad whichever
+            # call surfaced it, and must reach the reauth flow rather than being
+            # retried forever as a transient failure.
+            self.premium = await self.client.async_is_premium()
+        except FleetAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except FleetError as err:
+            raise UpdateFailed(str(err)) from err
+
     async def _async_update_data(self) -> FleetData:
         """Fetch host counts and policies, then diff for compliance drift."""
+        self._polls_since_metadata += 1
+        if self._polls_since_metadata >= METADATA_REFRESH_EVERY:
+            self._polls_since_metadata = 0
+            await self._async_refresh_server_metadata()
+
         try:
             summary = await self.client.async_get_host_summary()
             policies = await self.client.async_get_global_policies()
@@ -404,11 +430,7 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         newest_activity = max((a.id for a in activities), default=None)
         now = dt_util.utcnow()
         cutoff = now - self.missing_after
-        currently_missing = {
-            host.id
-            for host in hosts
-            if host.seen_time is not None and host.seen_time < cutoff
-        }
+        currently_missing = {host.id for host in hosts if host.is_missing_at(cutoff)}
 
         if not self._has_baseline:
             self._last_activity_id = newest_activity
@@ -484,15 +506,27 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
 def per_host_entities_enabled(entry: ConfigEntry, host_count: int) -> bool:
     """Whether to create per-host entities for this entry.
 
-    An explicit choice in the options always wins. Otherwise the fleet size
-    decides: small fleets get them automatically, because that is what most
-    people want and the entity count is unremarkable. Above the threshold they
-    are off until asked for, so adding the integration to a large fleet cannot
-    create thousands of entities by surprise.
+    Three states. ``on`` and ``off`` are explicit and always win. ``auto`` — the
+    default — decides on fleet size: small fleets get them, because that is what
+    most people want and the entity count is unremarkable, while a large fleet
+    gets none until asked, so installing this on a 500-host fleet cannot create
+    thousands of entities by surprise.
+
+    In ``auto`` the decision is re-evaluated on every refresh, so a fleet that
+    grows past the threshold stops having per-host entities. That is deliberate:
+    crossing the threshold is exactly the moment the choice should become
+    yours rather than ours. Set the option explicitly to ``on`` to keep them.
     """
-    explicit = entry.options.get(CONF_PER_HOST_ENTITIES)
-    if explicit is not None:
-        return bool(explicit)
+    value = entry.options.get(CONF_PER_HOST_ENTITIES, DEFAULT_PER_HOST_ENTITIES)
+
+    # Entries created before 0.4 stored a plain boolean here.
+    if isinstance(value, bool):
+        return value
+
+    if value == PER_HOST_ON:
+        return True
+    if value == PER_HOST_OFF:
+        return False
     return host_count <= PER_HOST_ENTITY_THRESHOLD
 
 

@@ -201,6 +201,7 @@ class FleetHost:
     osquery_version: str
     failing_policies_count: int
     seen_time: datetime | None
+    last_enrolled_at: datetime | None
     last_restarted_at: datetime | None
     disk_gigs_available: float | None
     disk_percent_available: int | None
@@ -209,6 +210,20 @@ class FleetHost:
     def is_online(self) -> bool:
         """Whether Fleet currently considers this host online."""
         return self.status == "online"
+
+    def is_missing_at(self, cutoff: datetime) -> bool:
+        """Whether this host counts as missing given an unseen-since cutoff.
+
+        A host with no ``seen_time`` has never checked in at all, which is the
+        most missing a host can be — but it needs a grace period, or every host
+        would be reported missing in the seconds between enrolling and its first
+        report. Enrolment time provides that grace. With neither timestamp there
+        is nothing suggesting the host is alive, so it counts as missing.
+        """
+        reference = self.seen_time or self.last_enrolled_at
+        if reference is None:
+            return True
+        return reference < cutoff
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> FleetHost:
@@ -234,6 +249,7 @@ class FleetHost:
             osquery_version=str(data.get("osquery_version") or ""),
             failing_policies_count=int(issues.get("failing_policies_count") or 0),
             seen_time=parse_fleet_time(data.get("seen_time")),
+            last_enrolled_at=parse_fleet_time(data.get("last_enrolled_at")),
             # Fleet reports uptime as a duration, but also gives the boot time
             # directly. The timestamp is what a Home Assistant sensor wants.
             last_restarted_at=parse_fleet_time(data.get("last_restarted_at")),
@@ -438,13 +454,19 @@ class FleetClient:
     async def async_is_premium(self) -> bool:
         """Return whether the server is licensed for Fleet Premium.
 
-        Falls back to ``False`` when the token's role cannot read the config
-        endpoint, so an Observer token degrades to Free-tier behaviour rather
-        than failing setup.
+        Falls back to ``False`` only when the token's role genuinely cannot read
+        the config endpoint, so an Observer token degrades to Free-tier
+        behaviour rather than failing setup.
+
+        Deliberately narrow: catching :class:`FleetError` here would also
+        swallow :class:`FleetAuthError` and :class:`FleetConnectionError`, which
+        both subclass it. That would mean a rejected token never reaches the
+        reauth flow, and a momentary network blip would silently pin the
+        integration to Free-tier semantics until the next reload.
         """
         try:
             config = await self._get("/config")
-        except (FleetForbiddenError, FleetError):
+        except (FleetForbiddenError, FleetNotFoundError):
             _LOGGER.info(
                 "Could not read Fleet licence tier; assuming Free tier and "
                 "hiding Premium-only entities"
@@ -610,5 +632,14 @@ class FleetClient:
                 or len(batch) < ACTIVITIES_PER_PAGE
             ):
                 break
+        else:
+            _LOGGER.warning(
+                "Stopped reading the activity feed at the %d page safety cap "
+                "(%d activities read) without reaching the last one seen. Some "
+                "host enrolment events may have been missed; consider a shorter "
+                "inventory interval if this recurs",
+                MAX_PAGES,
+                len(collected),
+            )
 
         return collected

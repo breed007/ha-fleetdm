@@ -19,6 +19,9 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -45,6 +48,7 @@ from .const import (
     DEFAULT_INVENTORY_INTERVAL,
     DEFAULT_LABEL_SENSORS,
     DEFAULT_MISSING_AFTER_HOURS,
+    DEFAULT_PER_HOST_ENTITIES,
     DEFAULT_REDACT_HOSTNAMES,
     DEFAULT_SUMMARY_INTERVAL,
     DEFAULT_VERIFY_SSL,
@@ -56,7 +60,9 @@ from .const import (
     MIN_INVENTORY_INTERVAL,
     MIN_MISSING_AFTER_HOURS,
     MIN_SUMMARY_INTERVAL,
-    PER_HOST_ENTITY_THRESHOLD,
+    PER_HOST_CHOICES,
+    PER_HOST_OFF,
+    PER_HOST_ON,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -164,6 +170,9 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except FleetError:
                 errors["base"] = "unknown"
+            except Exception:
+                _LOGGER.exception("Unexpected error validating Fleet connection")
+                errors["base"] = "unknown"
             else:
                 return self.async_update_reload_and_abort(
                     reauth_entry,
@@ -201,6 +210,9 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
             except (FleetConnectionError, ValueError):
                 errors["base"] = "cannot_connect"
             except FleetError:
+                errors["base"] = "unknown"
+            except Exception:
+                _LOGGER.exception("Unexpected error validating Fleet connection")
                 errors["base"] = "unknown"
             else:
                 await self.async_set_unique_id(base_url)
@@ -245,16 +257,17 @@ class FleetOptionsFlow(OptionsFlow):
 
         options = self.config_entry.options
 
-        # Default the per-host toggle to whatever the size rule would choose, so
-        # the form shows what is actually happening rather than a blank control
-        # the user has to guess the meaning of.
         host_count = 0
         runtime = getattr(self.config_entry, "runtime_data", None)
         if runtime is not None and runtime.inventory.data is not None:
             host_count = len(runtime.inventory.data.hosts)
-        per_host_default = options.get(
-            CONF_PER_HOST_ENTITIES, host_count <= PER_HOST_ENTITY_THRESHOLD
-        )
+
+        # Tri-state, and it must round-trip unchanged. When this was a boolean
+        # with a computed default, saving the form to change anything at all
+        # wrote an explicit value and silently disabled the size rule forever.
+        stored = options.get(CONF_PER_HOST_ENTITIES, DEFAULT_PER_HOST_ENTITIES)
+        if isinstance(stored, bool):  # migrated from a pre-0.4 entry
+            stored = PER_HOST_ON if stored else PER_HOST_OFF
 
         schema = vol.Schema(
             {
@@ -286,9 +299,13 @@ class FleetOptionsFlow(OptionsFlow):
                         mode=NumberSelectorMode.BOX,
                     )
                 ),
-                vol.Required(
-                    CONF_PER_HOST_ENTITIES, default=per_host_default
-                ): BooleanSelector(),
+                vol.Required(CONF_PER_HOST_ENTITIES, default=stored): SelectSelector(
+                    SelectSelectorConfig(
+                        options=PER_HOST_CHOICES,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        translation_key="per_host_entities",
+                    )
+                ),
                 vol.Required(
                     CONF_MISSING_AFTER_HOURS,
                     default=options.get(

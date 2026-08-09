@@ -30,7 +30,6 @@ from .coordinator import (
     FleetData,
     FleetInventoryCoordinator,
     FleetSummaryCoordinator,
-    per_host_entities_enabled,
 )
 from .entity import (
     FleetEntity,
@@ -165,10 +164,6 @@ async def async_setup_entry(
             LABEL_HOSTS_KEY,
             lambda label_id: FleetLabelHostsSensor(inventory, entry, label_id),
         )
-
-    host_count = len(inventory.data.hosts) if inventory.data else 0
-    if not per_host_entities_enabled(entry, host_count):
-        return
 
     for key, factory in (
         (HOST_FAILING_POLICIES_KEY, FleetHostFailingPoliciesSensor),
