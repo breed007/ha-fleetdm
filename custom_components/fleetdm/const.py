@@ -17,6 +17,7 @@ CONF_INVENTORY_INTERVAL: Final = "inventory_interval"
 CONF_PER_HOST_ENTITIES: Final = "per_host_entities"
 CONF_VULNERABILITY_SENSORS: Final = "vulnerability_sensors"
 CONF_LABEL_SENSORS: Final = "label_sensors"
+CONF_ACTIVITY_EVENTS: Final = "activity_events"
 CONF_MISSING_AFTER_HOURS: Final = "missing_after_hours"
 CONF_REDACT_HOSTNAMES: Final = "redact_hostnames_in_diagnostics"
 
@@ -26,6 +27,9 @@ DEFAULT_INVENTORY_INTERVAL: Final = 300
 DEFAULT_VERIFY_SSL: Final = True
 DEFAULT_VULNERABILITY_SENSORS: Final = True
 DEFAULT_LABEL_SENSORS: Final = True
+# Off by default: an active Fleet writes a lot of audit entries, and most
+# of them are not something anyone wants an automation trigger for.
+DEFAULT_ACTIVITY_EVENTS: Final = False
 DEFAULT_MISSING_AFTER_HOURS: Final = 24
 DEFAULT_REDACT_HOSTNAMES: Final = True
 
@@ -56,18 +60,23 @@ EVENT_POLICY_FAILING: Final = "fleetdm_policy_failing"
 EVENT_POLICY_RECOVERED: Final = "fleetdm_policy_recovered"
 EVENT_HOST_ENROLLED: Final = "fleetdm_host_enrolled"
 EVENT_HOST_MISSING: Final = "fleetdm_host_missing"
+EVENT_ACTIVITY: Final = "fleetdm_activity"
 
 # `event` entity event types.
 EVENT_TYPE_POLICY_NEWLY_FAILING: Final = "policy_newly_failing"
 EVENT_TYPE_POLICY_RECOVERED: Final = "policy_recovered"
 EVENT_TYPE_HOST_ENROLLED: Final = "host_enrolled"
 EVENT_TYPE_HOST_WENT_MISSING: Final = "host_went_missing"
+# One generic type rather than an enumeration of Fleet's audit taxonomy,
+# which changes between releases. The specific type travels in the payload.
+EVENT_TYPE_ACTIVITY: Final = "fleet_activity"
 
 EVENT_TYPES: Final = [
     EVENT_TYPE_POLICY_NEWLY_FAILING,
     EVENT_TYPE_POLICY_RECOVERED,
     EVENT_TYPE_HOST_ENROLLED,
     EVENT_TYPE_HOST_WENT_MISSING,
+    EVENT_TYPE_ACTIVITY,
 ]
 
 # Storage for drift state, so events survive a Home Assistant restart without

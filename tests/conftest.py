@@ -218,6 +218,38 @@ VULNERABLE_SOFTWARE_RESPONSE = {
 }
 
 
+OS_VERSIONS_RESPONSE = {
+    "count": 3,
+    "counts_updated_at": "2026-08-07T15:00:00Z",
+    "os_versions": [
+        {
+            "name": "macOS 26.6.1",
+            "name_only": "macOS",
+            "version": "26.6.1",
+            "platform": "darwin",
+            "hosts_count": 3,
+            "vulnerabilities_count": 0,
+        },
+        {
+            "name": "Ubuntu 24.04.4 LTS",
+            "name_only": "Ubuntu",
+            "version": "24.04.4",
+            "platform": "ubuntu",
+            "hosts_count": 2,
+            "vulnerabilities_count": 4,
+        },
+        {
+            "name": "Debian GNU/Linux 12.0.0",
+            "name_only": "Debian GNU/Linux",
+            "version": "12.0.0",
+            "platform": "debian",
+            "hosts_count": 1,
+            "vulnerabilities_count": 2,
+        },
+    ],
+}
+
+
 def mock_fleet(
     aioclient_mock: AiohttpClientMocker,
     *,
@@ -229,6 +261,7 @@ def mock_fleet(
     activities: dict[str, Any] | None = None,
     software: dict[str, Any] | None = None,
     labels: dict[str, Any] | None = None,
+    os_versions: dict[str, Any] | None = None,
 ) -> None:
     """Register a full set of successful Fleet endpoints."""
     aioclient_mock.get(f"{API}/version", json=version or VERSION_RESPONSE)
@@ -245,6 +278,7 @@ def mock_fleet(
     aioclient_mock.get(
         f"{API}/software/titles", json=software or VULNERABLE_SOFTWARE_RESPONSE
     )
+    aioclient_mock.get(f"{API}/os_versions", json=os_versions or OS_VERSIONS_RESPONSE)
     aioclient_mock.get(
         f"{API}/labels",
         json=labels

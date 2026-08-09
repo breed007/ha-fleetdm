@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Per-host **disk free** as a percentage (enabled) and in gigabytes (disabled),
+  plus **osquery version** and **MDM enrolment status** as disabled diagnostics.
+  All read from the host list already being fetched, so they cost nothing extra.
+- **`sensor.fleet_hosts_on_vulnerable_os`** — how many hosts run an OS version
+  with known CVEs, with the full OS spread as an attribute. Fleet aggregates
+  this server-side, so it is one request whatever the fleet size.
+- Opt-in **`fleetdm_activity`** events covering the rest of Fleet's audit feed.
+  The Fleet activity type travels in the payload rather than becoming its own
+  Home Assistant event type, so new Fleet activity types work without a release
+  here. Off by default: an active Fleet writes a great many of these.
+- `quality_scale.yaml` declaring silver, with exemptions recorded and three
+  rules honestly marked todo.
+
+### Fixed
+
+- **Premium detection swallowed authentication and connection errors.** It
+  caught `FleetError`, which `FleetAuthError` and `FleetConnectionError` both
+  subclass, so a rejected token never reached the reauth flow and a brief
+  network failure silently pinned the integration to Free-tier compliance
+  semantics until the next reload.
+- **Hosts deleted from Fleet left orphaned devices** in the registry, and could
+  not be removed from the UI either. Devices are now reconciled on every
+  inventory refresh, and manual removal is allowed once Fleet has dropped the
+  host. *(User-visible: stale host devices will disappear on upgrade.)*
+- **Host device details went stale.** Name, model and OS version were captured
+  once when the entity was created, so a rename or OS upgrade in Fleet never
+  reached Home Assistant without a reload.
+- **A host that never checked in could never be reported missing** — the most
+  missing a host can be. It now falls back to enrolment time for a grace period.
+  *(User-visible: such hosts will start reporting missing.)*
+- **Saving the options form disabled per-host auto-gating permanently.** The
+  setting is now tri-state (auto/on/off) and round-trips unchanged; the gate is
+  also re-evaluated on every refresh instead of only at platform setup.
+- The event entity now derives availability from both coordinators, so a
+  persistently failing inventory coordinator can no longer stop host events
+  while still appearing healthy.
+- The activity feed warns when the pagination cap truncates it, matching the
+  hosts and policies paths.
+- Reauth and reconfigure gained the catch-all error guard the initial setup step
+  already had, so unexpected failures show a form error rather than a traceback.
+- Server version and licence tier are re-read periodically instead of once at
+  setup, so a Fleet upgrade or licence change is picked up without a reload.
+
+### Changed
+
+- `PARALLEL_UPDATES = 0` on all platforms.
+- Entity names embedding a policy or label name use translation placeholders
+  instead of f-strings, so the surrounding wording is translatable. Renames
+  still follow, which needed care: Home Assistant caches entity names.
+- CI actions pinned to commits rather than moving branches.
+
 ## [0.3.0] - 2026-08-08
 
 Per-label host counts. Labels are available on Fleet Free, so unlike teams
