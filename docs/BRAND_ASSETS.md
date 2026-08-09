@@ -70,6 +70,27 @@ and the white ones as neutral also describes what the integration reports.
 It does **not** use Home Assistant branding, which would wrongly imply this is
 an official integration.
 
+## Known: HACS shows "icon not available"
+
+The icon renders correctly on **Settings → Devices & Services**, which is where
+Home Assistant itself draws it. HACS's own dashboard and update cards show a
+grey *"icon not available"* placeholder instead.
+
+That is a HACS bug, not a problem with these files. HACS still fetches icons
+from the brands CDN rather than through Home Assistant's Brands Proxy API, so
+it never looks at the `brand/` folder — and the CDN has no entry for any custom
+integration added since Home Assistant stopped accepting them in 2026.3. Every
+recently-published custom integration is affected, not just this one.
+
+Tracked upstream:
+
+- [hacs/integration#5171](https://github.com/hacs/integration/issues/5171) — dashboard doesn't show local brand icons
+- [hacs/integration#5179](https://github.com/hacs/integration/issues/5179) — HACS should use the Brands Proxy API
+- [hacs/integration#5223](https://github.com/hacs/integration/issues/5223) — downloads panel shows 'icon not available'
+- [hacs/integration#5402](https://github.com/hacs/integration/issues/5402) — local branding works, HACS still shows the placeholder
+
+**Do not cut a release to "fix" this.** Nothing shipped from here changes it.
+
 ### Trademark note
 
 The mark is Fleet-adjacent on purpose: it borrows two brand colours and a grid
