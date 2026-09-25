@@ -29,7 +29,7 @@ rules:
   unique-config-entry:
     status: done
     comment: |
-      Keyed on the normalised base URL, so the same server cannot be added
+      Keyed on the normalized base URL, so the same server cannot be added
       twice under different spellings.
 
   # Silver
@@ -52,7 +52,7 @@ rules:
     status: done
     comment: |
       A 401 from any endpoint raises ConfigEntryAuthFailed, including during
-      the licence-tier probe.
+      the license-tier probe.
   test-coverage:
     status: done
     comment: CI enforces a floor of 85%; current coverage is above 95%.
@@ -87,7 +87,7 @@ rules:
   dynamic-devices:
     status: done
     comment: |
-      Hosts become devices as they enrol and are removed when Fleet drops
+      Hosts become devices as they enroll and are removed when Fleet drops
       them, without a reload.
   entity-category: done
   entity-device-class: done

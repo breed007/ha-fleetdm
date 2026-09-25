@@ -76,9 +76,9 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# How many summary polls between re-reads of the Fleet version and licence
+# How many summary polls between re-reads of the Fleet version and license
 # tier. At the default 60s interval this is roughly hourly: often enough that a
-# server upgrade or licence change is picked up the same day, rare enough to be
+# server upgrade or license change is picked up the same day, rare enough to be
 # invisible in request volume.
 METADATA_REFRESH_EVERY = 60
 
@@ -146,7 +146,7 @@ class FleetSummaryCoordinator(DataUpdateCoordinator[FleetData]):
         entry: ConfigEntry,
         client: FleetClient,
     ) -> None:
-        """Initialise the coordinator."""
+        """Initialize the coordinator."""
         interval = entry.options.get(CONF_SUMMARY_INTERVAL, DEFAULT_SUMMARY_INTERVAL)
         super().__init__(
             hass,
@@ -189,10 +189,10 @@ class FleetSummaryCoordinator(DataUpdateCoordinator[FleetData]):
             )
 
     async def _async_refresh_server_metadata(self) -> None:
-        """Read the Fleet version and licence tier.
+        """Read the Fleet version and license tier.
 
         Both change out from under us: a Fleet upgrade changes the version shown
-        on the hub device, and a licence change flips which policies the
+        on the hub device, and a license change flips which policies the
         compliance sensor watches. Neither is worth a request every cycle, but
         fetching them once at setup meant they stayed wrong until a reload.
         """
@@ -361,7 +361,7 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         entry: ConfigEntry,
         client: FleetClient,
     ) -> None:
-        """Initialise the coordinator."""
+        """Initialize the coordinator."""
         interval = entry.options.get(
             CONF_INVENTORY_INTERVAL, DEFAULT_INVENTORY_INTERVAL
         )
@@ -437,7 +437,7 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         """Derive host events, using the same no-storm rules as policy drift.
 
         The first cycle on a new config entry establishes watermarks silently.
-        Without that, adding the integration would fire an enrolment event for
+        Without that, adding the integration would fire an enrollment event for
         every host in the recent activity feed and a missing event for every
         host that is already stale.
         """
@@ -470,7 +470,7 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
                 events.append(
                     FleetDriftEvent(
                         event_type=EVENT_TYPE_HOST_ENROLLED,
-                        data=_enrolment_event_payload(activity),
+                        data=_enrollment_event_payload(activity),
                     )
                 )
             elif emit_activities:
@@ -553,8 +553,8 @@ def per_host_entities_enabled(entry: ConfigEntry, host_count: int) -> bool:
     return host_count <= PER_HOST_ENTITY_THRESHOLD
 
 
-def _enrolment_event_payload(activity: FleetActivity) -> dict[str, Any]:
-    """Build the automation-facing payload for a host enrolment."""
+def _enrollment_event_payload(activity: FleetActivity) -> dict[str, Any]:
+    """Build the automation-facing payload for a host enrollment."""
     details = activity.details
     return {
         "host_id": details.get("host_id"),

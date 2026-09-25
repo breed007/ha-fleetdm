@@ -15,7 +15,7 @@ from custom_components.fleetdm.const import (
 
 from .conftest import (
     activities_payload,
-    enrolment_activity,
+    enrollment_activity,
     mock_fleet,
 )
 from .test_drift import setup_with
@@ -105,7 +105,7 @@ async def test_activity_events_off_by_default(
 async def test_activity_events_when_enabled(
     hass, aioclient_mock, mock_config_entry
 ) -> None:
-    """Enabled, every non-enrolment activity fires with its Fleet type."""
+    """Enabled, every non-enrollment activity fires with its Fleet type."""
     mock_config_entry.add_to_hass(hass)
     hass.config_entries.async_update_entry(
         mock_config_entry, options={CONF_ACTIVITY_EVENTS: True}
@@ -115,7 +115,7 @@ async def test_activity_events_when_enabled(
     await hass.async_block_till_done()
 
     activity_events = async_capture_events(hass, EVENT_ACTIVITY)
-    enrolments = async_capture_events(hass, EVENT_HOST_ENROLLED)
+    enrollments = async_capture_events(hass, EVENT_HOST_ENROLLED)
 
     await inventory_poll(
         hass,
@@ -123,14 +123,14 @@ async def test_activity_events_when_enabled(
         aioclient_mock,
         activities=activities_payload(
             {"id": 40, "type": "ran_script", "details": {"host_id": 7}},
-            enrolment_activity(41, 3, "Carol Server"),
+            enrollment_activity(41, 3, "Carol Server"),
         ),
     )
 
-    # Enrolment keeps its own dedicated event rather than being folded in.
+    # Enrollment keeps its own dedicated event rather than being folded in.
     assert [e.data["activity_type"] for e in activity_events] == ["ran_script"]
     assert activity_events[0].data["details"] == {"host_id": 7}
-    assert len(enrolments) == 1
+    assert len(enrollments) == 1
 
 
 async def test_mdm_status_reports_unknown_without_mdm(hass, setup_integration) -> None:

@@ -42,7 +42,7 @@ WHITE = (255, 255, 255, 255)
 
 # Sampled from Fleet's own logo (fleetdm.com), whose mark is a 3x3 dot grid with
 # the lower-right diagonal left empty.
-FLEET_NAVY = (25, 33, 71, 255)  # #192147, the Fleet wordmark colour
+FLEET_NAVY = (25, 33, 71, 255)  # #192147, the Fleet wordmark color
 FLEET_GREEN = (99, 199, 64, 255)  # #63C740, the first dot of Fleet's grid
 SHIELD_TOP = (38, 53, 107, 255)  # A lift of the navy, for a subtle gradient
 

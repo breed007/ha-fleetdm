@@ -44,7 +44,7 @@ class FleetEntity(CoordinatorEntity[FleetSummaryCoordinator]):
     def __init__(
         self, coordinator: FleetSummaryCoordinator, entry: ConfigEntry
     ) -> None:
-        """Initialise the entity and bind it to the hub device."""
+        """Initialize the entity and bind it to the hub device."""
         super().__init__(coordinator)
         self._entry = entry
         self._attr_device_info = DeviceInfo(
@@ -88,7 +88,7 @@ class FleetPolicyEntity(DynamicNameMixin, FleetEntity):
         policy_id: int,
         key: str,
     ) -> None:
-        """Initialise the policy entity."""
+        """Initialize the policy entity."""
         super().__init__(coordinator, entry)
         self._policy_id = policy_id
         self._attr_unique_id = policy_unique_id(entry.entry_id, policy_id, key)
@@ -152,7 +152,7 @@ class FleetLabelEntity(DynamicNameMixin, CoordinatorEntity[FleetInventoryCoordin
         label_id: int,
         key: str,
     ) -> None:
-        """Initialise the label entity."""
+        """Initialize the label entity."""
         super().__init__(coordinator)
         self._entry = entry
         self._label_id = label_id
@@ -195,7 +195,7 @@ class FleetInventoryEntity(CoordinatorEntity[FleetInventoryCoordinator]):
     def __init__(
         self, coordinator: FleetInventoryCoordinator, entry: ConfigEntry
     ) -> None:
-        """Initialise the entity and bind it to the hub device."""
+        """Initialize the entity and bind it to the hub device."""
         super().__init__(coordinator)
         self._entry = entry
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, entry.entry_id)})
@@ -218,7 +218,7 @@ class FleetHostEntity(CoordinatorEntity[FleetInventoryCoordinator]):
         host_id: int,
         key: str,
     ) -> None:
-        """Initialise the host entity."""
+        """Initialize the host entity."""
         super().__init__(coordinator)
         self._entry = entry
         self._host_id = host_id
@@ -356,7 +356,7 @@ def async_setup_dynamic_entities(
     Policies, hosts and labels all come and go in Fleet, and all want the same
     handling: create entities for anything newly seen, and purge registry
     entries for anything that has disappeared, without needing a reload. This is
-    that shared behaviour, parameterised by how to read the current IDs out of
+    that shared behavior, parameterized by how to read the current IDs out of
     the coordinator and how to build a unique ID from one.
     """
     known: set[int] = set()
@@ -394,7 +394,7 @@ def async_setup_dynamic_host_entities(
     key: str,
     factory: Callable[[int], Any],
 ) -> None:
-    """Track hosts as they enrol in and leave Fleet.
+    """Track hosts as they enroll in and leave Fleet.
 
     The size gate is applied here rather than once at platform setup, so a
     fleet that grows past the threshold stops gaining per-host entities instead

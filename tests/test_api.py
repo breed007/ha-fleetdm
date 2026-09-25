@@ -32,7 +32,7 @@ from .conftest import API, BASE_URL
     ],
 )
 def test_normalize_url(raw: str, expected: str) -> None:
-    """URLs normalise to a stable unique ID."""
+    """URLs normalize to a stable unique ID."""
     assert normalize_url(raw) == expected
 
 

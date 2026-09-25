@@ -7,15 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI now tests against Home Assistant 2026.9, replacing 2026.7. The tests use
+  the scoped device-registry lookup that 2026.9 requires, falling back to the
+  old lookup on 2025.2, which predates it. The integration code itself needed
+  no change.
+- US English throughout code, comments and docs. User-facing strings,
+  entity IDs and event payloads are unchanged.
+
 ## [0.4.0] - 2026-08-09
 
 A bug-fix and hardening release, plus five new sensors. Several fixes change
-behaviour you will notice — those are marked below.
+behavior you will notice — those are marked below.
 
 ### Added
 
 - Per-host **disk free** as a percentage (enabled) and in gigabytes (disabled),
-  plus **osquery version** and **MDM enrolment status** as disabled diagnostics.
+  plus **osquery version** and **MDM enrollment status** as disabled diagnostics.
   All read from the host list already being fetched, so they cost nothing extra.
 - **`sensor.fleet_hosts_on_vulnerable_os`** — how many hosts run an OS version
   with known CVEs, with the full OS spread as an attribute. Fleet aggregates
@@ -42,7 +51,7 @@ behaviour you will notice — those are marked below.
   once when the entity was created, so a rename or OS upgrade in Fleet never
   reached Home Assistant without a reload.
 - **A host that never checked in could never be reported missing** — the most
-  missing a host can be. It now falls back to enrolment time for a grace period.
+  missing a host can be. It now falls back to enrollment time for a grace period.
   *(User-visible: such hosts will start reporting missing.)*
 - **Saving the options form disabled per-host auto-gating permanently.** The
   setting is now tri-state (auto/on/off) and round-trips unchanged; the gate is
@@ -54,8 +63,8 @@ behaviour you will notice — those are marked below.
   hosts and policies paths.
 - Reauth and reconfigure gained the catch-all error guard the initial setup step
   already had, so unexpected failures show a form error rather than a traceback.
-- Server version and licence tier are re-read periodically instead of once at
-  setup, so a Fleet upgrade or licence change is picked up without a reload.
+- Server version and license tier are re-read periodically instead of once at
+  setup, so a Fleet upgrade or license change is picked up without a reload.
 
 ### Changed
 
@@ -92,7 +101,7 @@ this works on every tier.
 ### Changed
 
 - The three near-identical dynamic-entity helpers for policies, hosts and labels
-  now share one implementation, parameterised by how to read IDs from the
+  now share one implementation, parameterized by how to read IDs from the
   coordinator. Adding a third copy would have been worse than collapsing them.
 
 ## [0.2.0] - 2026-08-07
@@ -119,13 +128,13 @@ fleets of 50 hosts or fewer.
   duplicates or losses across a restart.
 - Options for the inventory interval, per-host entities, the missing threshold
   and the vulnerable software sensor. Phase 1 deliberately shipped only the
-  options it honoured; these now control real behaviour.
+  options it honored; these now control real behavior.
 - A second, slower "inventory" coordinator for the host list, vulnerable
   software and activity feed, keeping the expensive calls off the fast cycle.
 
 ### Notes
 
-- Fleet's host enrolment activity is `fleet_enrolled`, not the `host_enrolled`
+- Fleet's host enrollment activity is `fleet_enrolled`, not the `host_enrolled`
   this project's own spec assumed. Both are accepted so the event works across
   Fleet versions.
 - Per-host data comes from the `/hosts` list, which already carries
@@ -167,7 +176,7 @@ First release. Fleet-level monitoring and per-policy compliance, read-only.
 ### Added
 
 - Config flow with connection validation against `/api/latest/fleet/version`,
-  URL normalisation, and duplicate-server detection
+  URL normalization, and duplicate-server detection
 - Reauth flow, triggered automatically when Fleet rejects the stored token
 - Reconfigure flow, for planned API token rotation before the old token is
   revoked

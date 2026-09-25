@@ -27,7 +27,7 @@ from .coordinator import (
 from .entity import FleetEntity, fleet_unique_id
 
 # Read-only, coordinator-driven: every entity reads from an already-fetched
-# snapshot, so Home Assistant need not serialise updates across them.
+# snapshot, so Home Assistant need not serialize updates across them.
 PARALLEL_UPDATES = 0
 
 
@@ -50,7 +50,7 @@ class FleetEventEntity(FleetEntity, EventEntity):
     """Surfaces Fleet compliance and host events as Home Assistant events.
 
     Listens to both coordinators. Policy drift arrives on the fast summary
-    cycle, host enrolment and host-missing on the slower inventory cycle, but
+    cycle, host enrollment and host-missing on the slower inventory cycle, but
     they belong on one timeline rather than being split across two entities by
     an implementation detail.
     """
@@ -64,7 +64,7 @@ class FleetEventEntity(FleetEntity, EventEntity):
         inventory: FleetInventoryCoordinator,
         entry: FleetConfigEntry,
     ) -> None:
-        """Initialise the event entity."""
+        """Initialize the event entity."""
         super().__init__(coordinator, entry)
         self._inventory = inventory
         self._attr_unique_id = fleet_unique_id(entry.entry_id, "events")

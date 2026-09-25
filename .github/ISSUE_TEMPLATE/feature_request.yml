@@ -42,6 +42,6 @@ body:
     attributes:
       label: How many hosts are in your fleet?
       description: |
-        Genuinely useful for prioritisation, particularly for anything that
+        Genuinely useful for prioritization, particularly for anything that
         creates per-host entities.
       placeholder: "15"

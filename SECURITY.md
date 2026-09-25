@@ -8,7 +8,7 @@ Use GitHub's private vulnerability reporting:
 [Report a vulnerability](https://github.com/breed007/ha-fleetdm/security/advisories/new).
 
 Please include the affected version, what an attacker can achieve, and steps to
-reproduce. You will get an acknowledgement, and I will let you know when a fix
+reproduce. You will get an acknowledgment, and I will let you know when a fix
 ships and credit you unless you would rather stay anonymous.
 
 This is a hobby project maintained in spare time — please set your expectations

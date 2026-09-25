@@ -57,7 +57,7 @@ A shield for compliance, carrying a 3×3 grid of host dots.
 | **row 1** | green | green | white |
 | **row 2** | green | white | white |
 
-Two colours, both sampled from Fleet's own logo
+Two colors, both sampled from Fleet's own logo
 (`fleetdm.com/images/logo-blue-118x41@2x.png`):
 
 - `#63C740` — Fleet green, for the six filled dots
@@ -74,7 +74,7 @@ an official integration.
 
 The icon renders correctly on **Settings → Devices & Services**, which is where
 Home Assistant itself draws it. HACS's own dashboard and update cards show a
-grey *"icon not available"* placeholder instead.
+gray *"icon not available"* placeholder instead.
 
 That is a HACS bug, not a problem with these files. HACS still fetches icons
 from the brands CDN rather than through Home Assistant's Brands Proxy API, so
@@ -93,7 +93,7 @@ Tracked upstream:
 
 ### Trademark note
 
-The mark is Fleet-adjacent on purpose: it borrows two brand colours and a grid
+The mark is Fleet-adjacent on purpose: it borrows two brand colors and a grid
 arrangement so it reads as related to Fleet at a glance. It is not a copy of
 Fleet's logo, and it is not the Fleet wordmark's typeface.
 

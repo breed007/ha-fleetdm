@@ -27,7 +27,7 @@ from .entity import (
 )
 
 # Read-only, coordinator-driven: every entity reads from an already-fetched
-# snapshot, so Home Assistant need not serialise updates across them.
+# snapshot, so Home Assistant need not serialize updates across them.
 PARALLEL_UPDATES = 0
 
 POLICY_COMPLIANCE_KEY = "compliance"
@@ -92,7 +92,7 @@ class FleetComplianceBinarySensor(FleetEntity, BinarySensorEntity):
     def __init__(
         self, coordinator: FleetSummaryCoordinator, entry: FleetConfigEntry
     ) -> None:
-        """Initialise the compliance sensor."""
+        """Initialize the compliance sensor."""
         super().__init__(coordinator, entry)
         self._attr_unique_id = fleet_unique_id(entry.entry_id, "compliance")
 
@@ -137,7 +137,7 @@ class FleetPolicyBinarySensor(FleetPolicyEntity, BinarySensorEntity):
         entry: FleetConfigEntry,
         policy_id: int,
     ) -> None:
-        """Initialise the per-policy sensor."""
+        """Initialize the per-policy sensor."""
         super().__init__(coordinator, entry, policy_id, POLICY_COMPLIANCE_KEY)
 
     @property
@@ -184,7 +184,7 @@ class FleetHostOnlineBinarySensor(FleetHostBinarySensorBase):
         entry: FleetConfigEntry,
         host_id: int,
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry, host_id, HOST_ONLINE_KEY)
 
     @property
@@ -211,7 +211,7 @@ class FleetHostMissingBinarySensor(FleetHostBinarySensorBase):
         entry: FleetConfigEntry,
         host_id: int,
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry, host_id, HOST_MISSING_KEY)
 
     @property

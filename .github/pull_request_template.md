@@ -6,7 +6,7 @@
 
 - [ ] `pytest tests/` passes
 - [ ] `ruff check` and `ruff format --check` pass
-- [ ] New or changed behaviour has a test
+- [ ] New or changed behavior has a test
 - [ ] User-facing strings updated in **both** `strings.json` and `translations/en.json`
 - [ ] No new entries in `manifest.json` `requirements`
 

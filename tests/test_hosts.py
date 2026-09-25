@@ -19,7 +19,14 @@ from custom_components.fleetdm.const import (
     PER_HOST_ON,
 )
 
-from .conftest import HOST_DESKTOP, HOST_LAPTOP, host, hosts_payload, mock_fleet
+from .conftest import (
+    HOST_DESKTOP,
+    HOST_LAPTOP,
+    get_device,
+    host,
+    hosts_payload,
+    mock_fleet,
+)
 from .test_drift import setup_with
 
 
@@ -33,13 +40,11 @@ async def inventory_poll(hass, entry, aioclient_mock, **kwargs: Any) -> None:
 
 async def test_host_devices_created(hass, setup_integration) -> None:
     """Each host becomes its own device hanging off the Fleet hub."""
-    devices = dr.async_get(hass)
-    hub = devices.async_get_device(identifiers={(DOMAIN, setup_integration.entry_id)})
+    entry_id = setup_integration.entry_id
+    hub = get_device(hass, entry_id, entry_id)
     assert hub is not None
 
-    laptop = devices.async_get_device(
-        identifiers={(DOMAIN, f"{setup_integration.entry_id}_host_1")}
-    )
+    laptop = get_device(hass, entry_id, f"{entry_id}_host_1")
     assert laptop is not None
     assert laptop.name == "Ada Laptop"
     assert laptop.via_device_id == hub.id
@@ -100,7 +105,7 @@ async def test_missing_sensor_uses_configured_threshold(
 
 
 async def test_new_host_adds_entities(hass, aioclient_mock, mock_config_entry) -> None:
-    """A host that enrols later appears without reloading the integration."""
+    """A host that enrolls later appears without reloading the integration."""
     entry = await setup_with(hass, mock_config_entry, aioclient_mock)
     assert hass.states.get("binary_sensor.carol_server_online") is None
 
@@ -143,7 +148,7 @@ async def test_large_fleet_skips_per_host_entities(
     assert hass.states.get("sensor.fleet_hosts_online") is not None
 
 
-async def test_large_fleet_honours_explicit_opt_in(
+async def test_large_fleet_honors_explicit_opt_in(
     hass, aioclient_mock, mock_config_entry
 ) -> None:
     """An explicit yes in the options overrides the size rule."""
@@ -161,10 +166,10 @@ async def test_large_fleet_honours_explicit_opt_in(
     assert hass.states.get("binary_sensor.host_1_online") is not None
 
 
-async def test_small_fleet_honours_explicit_opt_out(
+async def test_small_fleet_honors_explicit_opt_out(
     hass, aioclient_mock, mock_config_entry
 ) -> None:
-    """An explicit no is honoured even on a small fleet."""
+    """An explicit no is honored even on a small fleet."""
     mock_config_entry.add_to_hass(hass)
     hass.config_entries.async_update_entry(
         mock_config_entry, options={CONF_PER_HOST_ENTITIES: False}
@@ -217,19 +222,15 @@ async def test_deleted_host_removes_device(
     could not be cleared from the UI.
     """
     entry = await setup_with(hass, mock_config_entry, aioclient_mock)
-    devices = dr.async_get(hass)
-    identifier = {(DOMAIN, f"{entry.entry_id}_host_2")}
-    assert devices.async_get_device(identifiers=identifier) is not None
+    entry_id = entry.entry_id
+    assert get_device(hass, entry_id, f"{entry_id}_host_2") is not None
 
     await inventory_poll(hass, entry, aioclient_mock, hosts=hosts_payload(HOST_LAPTOP))
 
-    assert devices.async_get_device(identifiers=identifier) is None
+    assert get_device(hass, entry_id, f"{entry_id}_host_2") is None
     # The surviving host and the hub are untouched.
-    assert (
-        devices.async_get_device(identifiers={(DOMAIN, f"{entry.entry_id}_host_1")})
-        is not None
-    )
-    assert devices.async_get_device(identifiers={(DOMAIN, entry.entry_id)}) is not None
+    assert get_device(hass, entry_id, f"{entry_id}_host_1") is not None
+    assert get_device(hass, entry_id, entry_id) is not None
 
 
 async def test_host_device_metadata_follows_fleet(
@@ -241,9 +242,8 @@ async def test_host_device_metadata_follows_fleet(
     renamed or upgraded in Fleet kept stale details until the entry reloaded.
     """
     entry = await setup_with(hass, mock_config_entry, aioclient_mock)
-    devices = dr.async_get(hass)
-    identifier = {(DOMAIN, f"{entry.entry_id}_host_1")}
-    assert devices.async_get_device(identifiers=identifier).name == "Ada Laptop"
+    key = f"{entry.entry_id}_host_1"
+    assert get_device(hass, entry.entry_id, key).name == "Ada Laptop"
 
     renamed = host(1, "Ada Workstation")
     renamed["os_version"] = "macOS 15.6"
@@ -252,7 +252,7 @@ async def test_host_device_metadata_follows_fleet(
         hass, entry, aioclient_mock, hosts=hosts_payload(renamed, HOST_DESKTOP)
     )
 
-    device = devices.async_get_device(identifiers=identifier)
+    device = get_device(hass, entry.entry_id, key)
     assert device.name == "Ada Workstation"
     assert device.sw_version == "macOS 15.6"
     assert device.model == "Mac15,3 · darwin"
@@ -265,10 +265,8 @@ async def test_device_removal_allowed_only_for_departed_hosts(
     from custom_components.fleetdm import async_remove_config_entry_device
 
     entry = await setup_with(hass, mock_config_entry, aioclient_mock)
-    devices = dr.async_get(hass)
-
-    live = devices.async_get_device(identifiers={(DOMAIN, f"{entry.entry_id}_host_1")})
-    hub = devices.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    live = get_device(hass, entry.entry_id, f"{entry.entry_id}_host_1")
+    hub = get_device(hass, entry.entry_id, entry.entry_id)
 
     # A host Fleet still reports would just be recreated on the next refresh.
     assert await async_remove_config_entry_device(hass, entry, live) is False
@@ -277,7 +275,7 @@ async def test_device_removal_allowed_only_for_departed_hosts(
 
     # Built through the registry rather than constructed directly: DeviceEntry's
     # signature differs across the Home Assistant versions CI covers.
-    stale = devices.async_get_or_create(
+    stale = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, f"{entry.entry_id}_host_999")},
     )

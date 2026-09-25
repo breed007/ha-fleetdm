@@ -45,14 +45,14 @@ This integration issues `GET` requests only. It has no code path that writes to
 Fleet, runs live queries, or modifies hosts, and the documented setup is a
 least-privilege Observer token.
 
-Please do not open PRs that add host-modifying behaviour, MDM commands, or
+Please do not open PRs that add host-modifying behavior, MDM commands, or
 script execution. Running *pre-existing saved queries* is on the roadmap for a
 later phase, and needs a deliberate design with the privilege trade-off spelled
 out for users — not an incremental PR.
 
 If you are adding a new Fleet API call, add it to
 [api.py](custom_components/fleetdm/api.py) and keep the exception mapping
-intact: `401` means reauth, `402`/`403` mean "this role or licence tier cannot
+intact: `401` means reauth, `402`/`403` mean "this role or license tier cannot
 do this" and must degrade gracefully.
 
 ## Drift events

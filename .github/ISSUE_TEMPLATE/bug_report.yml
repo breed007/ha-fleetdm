@@ -59,7 +59,7 @@ body:
   - type: dropdown
     id: fleet-tier
     attributes:
-      label: Fleet licence tier
+      label: Fleet license tier
       options:
         - Free
         - Premium

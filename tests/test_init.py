@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.helpers import device_registry as dr
 
-from custom_components.fleetdm.const import DOMAIN
-
-from .conftest import API, BASE_URL
+from .conftest import API, BASE_URL, get_device
 
 
 async def test_setup_and_unload(hass, setup_integration) -> None:
     """The entry sets up, creates the hub device, and unloads cleanly."""
     assert setup_integration.state is ConfigEntryState.LOADED
 
-    devices = dr.async_get(hass)
-    hub = devices.async_get_device(identifiers={(DOMAIN, setup_integration.entry_id)})
+    entry_id = setup_integration.entry_id
+    hub = get_device(hass, entry_id, entry_id)
     assert hub is not None
     assert hub.sw_version == "4.52.0"
     assert hub.configuration_url == BASE_URL

@@ -18,7 +18,7 @@ from .conftest import (
     POLICY_BITLOCKER,
     POLICY_GATEKEEPER,
     activities_payload,
-    enrolment_activity,
+    enrollment_activity,
     mock_fleet,
     policies_payload,
 )
@@ -38,7 +38,7 @@ async def test_event_entity_declares_all_types(hass, setup_integration) -> None:
 async def test_carries_events_from_both_coordinators(
     hass, aioclient_mock, mock_config_entry
 ) -> None:
-    """Policy drift and host enrolment land on the same timeline."""
+    """Policy drift and host enrollment land on the same timeline."""
     entry = await setup_with(hass, mock_config_entry, aioclient_mock)
 
     await poll(
@@ -56,7 +56,7 @@ async def test_carries_events_from_both_coordinators(
         hass,
         entry,
         aioclient_mock,
-        activities=activities_payload(enrolment_activity(77, 9, "New Host")),
+        activities=activities_payload(enrollment_activity(77, 9, "New Host")),
     )
     assert hass.states.get(ENTITY).attributes["event_type"] == EVENT_TYPE_HOST_ENROLLED
 

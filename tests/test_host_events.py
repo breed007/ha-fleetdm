@@ -1,4 +1,4 @@
-"""Tests for host enrolment and host-missing events.
+"""Tests for host enrollment and host-missing events.
 
 These carry the same guarantees as policy drift: no storm when the integration
 is first added, exactly one event per transition, and nothing duplicated or lost
@@ -20,7 +20,7 @@ from custom_components.fleetdm.const import (
 from .conftest import (
     HOST_LAPTOP,
     activities_payload,
-    enrolment_activity,
+    enrollment_activity,
     host,
     hosts_payload,
     mock_fleet,
@@ -29,10 +29,10 @@ from .test_drift import setup_with
 from .test_hosts import inventory_poll
 
 
-async def test_first_poll_seeds_enrolments_silently(
+async def test_first_poll_seeds_enrollments_silently(
     hass, aioclient_mock, mock_config_entry
 ) -> None:
-    """Existing enrolment activity must not fire events at setup."""
+    """Existing enrollment activity must not fire events at setup."""
     events = async_capture_events(hass, EVENT_HOST_ENROLLED)
 
     await setup_with(
@@ -40,15 +40,15 @@ async def test_first_poll_seeds_enrolments_silently(
         mock_config_entry,
         aioclient_mock,
         activities=activities_payload(
-            enrolment_activity(10, 1, "Ada Laptop"),
-            enrolment_activity(11, 2, "Grace Desktop"),
+            enrollment_activity(10, 1, "Ada Laptop"),
+            enrollment_activity(11, 2, "Grace Desktop"),
         ),
     )
 
     assert events == []
 
 
-async def test_new_enrolment_fires_once(
+async def test_new_enrollment_fires_once(
     hass, aioclient_mock, mock_config_entry
 ) -> None:
     """A host enrolling after setup fires exactly one event."""
@@ -57,7 +57,7 @@ async def test_new_enrolment_fires_once(
         hass,
         mock_config_entry,
         aioclient_mock,
-        activities=activities_payload(enrolment_activity(10, 1, "Ada Laptop")),
+        activities=activities_payload(enrollment_activity(10, 1, "Ada Laptop")),
     )
     assert events == []
 
@@ -66,8 +66,8 @@ async def test_new_enrolment_fires_once(
         entry,
         aioclient_mock,
         activities=activities_payload(
-            enrolment_activity(10, 1, "Ada Laptop"),
-            enrolment_activity(11, 3, "Carol Server"),
+            enrollment_activity(10, 1, "Ada Laptop"),
+            enrollment_activity(11, 3, "Carol Server"),
         ),
     )
 
@@ -82,14 +82,14 @@ async def test_new_enrolment_fires_once(
         entry,
         aioclient_mock,
         activities=activities_payload(
-            enrolment_activity(10, 1, "Ada Laptop"),
-            enrolment_activity(11, 3, "Carol Server"),
+            enrollment_activity(10, 1, "Ada Laptop"),
+            enrollment_activity(11, 3, "Carol Server"),
         ),
     )
     assert len(events) == 1
 
 
-async def test_non_enrolment_activities_ignored(
+async def test_non_enrollment_activities_ignored(
     hass, aioclient_mock, mock_config_entry
 ) -> None:
     """Unrelated audit entries advance the watermark but fire nothing."""
@@ -210,7 +210,7 @@ async def test_deleted_missing_host_fires_nothing(
     assert events == []
 
 
-async def test_event_entity_records_enrolment(
+async def test_event_entity_records_enrollment(
     hass, aioclient_mock, mock_config_entry
 ) -> None:
     """Host events land on the same event entity as policy drift."""
@@ -220,7 +220,7 @@ async def test_event_entity_records_enrolment(
         hass,
         entry,
         aioclient_mock,
-        activities=activities_payload(enrolment_activity(50, 9, "New Host")),
+        activities=activities_payload(enrollment_activity(50, 9, "New Host")),
     )
 
     state = hass.states.get("event.fleet_fleet_events")

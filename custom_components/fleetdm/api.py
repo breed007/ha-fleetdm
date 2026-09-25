@@ -1,7 +1,7 @@
 """Thin async client for the Fleet REST API.
 
 Only the read-only endpoints needed by the integration are implemented. Every
-call goes through :meth:`FleetClient._get`, which normalises Fleet's error
+call goes through :meth:`FleetClient._get`, which normalizes Fleet's error
 responses into the exception types below so the coordinator can tell the
 difference between "your token is bad" (reauth) and "your token is fine but
 this role can't read that" (degrade gracefully).
@@ -97,7 +97,7 @@ class FleetForbiddenError(FleetError):
 
 
 def normalize_url(url: str) -> str:
-    """Normalise a Fleet base URL for use as a config entry unique ID.
+    """Normalize a Fleet base URL for use as a config entry unique ID.
 
     Strips trailing slashes and whitespace and defaults to HTTPS when no scheme
     was given, so that ``fleet.example.com``, ``https://fleet.example.com`` and
@@ -219,7 +219,7 @@ class FleetHost:
         A host with no ``seen_time`` has never checked in at all, which is the
         most missing a host can be — but it needs a grace period, or every host
         would be reported missing in the seconds between enrolling and its first
-        report. Enrolment time provides that grace. With neither timestamp there
+        report. Enrollment time provides that grace. With neither timestamp there
         is nothing suggesting the host is alive, so it counts as missing.
         """
         reference = self.seen_time or self.last_enrolled_at
@@ -426,7 +426,7 @@ class FleetClient:
         base_url: str,
         token: str,
     ) -> None:
-        """Initialise the client.
+        """Initialize the client.
 
         SSL verification is a property of the shared session (obtained via
         ``async_get_clientsession(hass, verify_ssl=...)``), not of the request,
@@ -440,7 +440,7 @@ class FleetClient:
 
     @property
     def base_url(self) -> str:
-        """The normalised Fleet base URL."""
+        """The normalized Fleet base URL."""
         return self._base_url
 
     def host_page_url(self, host_id: int) -> str:
@@ -465,7 +465,7 @@ class FleetClient:
                 if response.status in (402, 403):
                     raise FleetForbiddenError(
                         f"Fleet returned {response.status} for {path}; the token's "
-                        "role or licence tier does not permit this request"
+                        "role or license tier does not permit this request"
                     )
                 if response.status == 404:
                     raise FleetNotFoundError(
@@ -497,7 +497,7 @@ class FleetClient:
 
         Falls back to ``False`` only when the token's role genuinely cannot read
         the config endpoint, so an Observer token degrades to Free-tier
-        behaviour rather than failing setup.
+        behavior rather than failing setup.
 
         Deliberately narrow: catching :class:`FleetError` here would also
         swallow :class:`FleetAuthError` and :class:`FleetConnectionError`, which
@@ -509,7 +509,7 @@ class FleetClient:
             config = await self._get("/config")
         except (FleetForbiddenError, FleetNotFoundError):
             _LOGGER.info(
-                "Could not read Fleet licence tier; assuming Free tier and "
+                "Could not read Fleet license tier; assuming Free tier and "
                 "hiding Premium-only entities"
             )
             return False
@@ -691,7 +691,7 @@ class FleetClient:
             _LOGGER.warning(
                 "Stopped reading the activity feed at the %d page safety cap "
                 "(%d activities read) without reaching the last one seen. Some "
-                "host enrolment events may have been missed; consider a shorter "
+                "host enrollment events may have been missed; consider a shorter "
                 "inventory interval if this recurs",
                 MAX_PAGES,
                 len(collected),

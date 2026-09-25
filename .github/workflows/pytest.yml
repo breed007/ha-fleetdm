@@ -20,11 +20,11 @@ jobs:
         # The oldest row must match the `homeassistant` floor in hacs.json —
         # that is what verifies the compatibility claim made to users.
         include:
+          - ha-version: "2026.9"
+            phcc: "0.13.366"
+            python-version: "3.14"
           - ha-version: "2026.8"
             phcc: "0.13.354"
-            python-version: "3.14"
-          - ha-version: "2026.7"
-            phcc: "0.13.345"
             python-version: "3.14"
           - ha-version: "2025.2"
             phcc: "0.13.210"

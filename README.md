@@ -17,7 +17,7 @@ recent Home Assistant releases plus that floor.
 
 > Fleet-level counts, per-policy compliance, per-host devices with disk and
 > agent detail, vulnerable software, per-label host counts, an OS-version
-> rollup, and events for compliance drift, host enrolment and hosts going
+> rollup, and events for compliance drift, host enrollment and hosts going
 > missing. See [Roadmap](#roadmap) for what's next.
 
 ---
@@ -54,7 +54,7 @@ Each enrolled host becomes its own device, linked to the Fleet hub, with a
 | `sensor.<host>_last_restarted` | sensor (`timestamp`) | Boot time. **Disabled by default** |
 | `sensor.<host>_disk_free_space` | sensor (`GB`) | Free disk in gigabytes. **Disabled by default** |
 | `sensor.<host>_osquery_version` | sensor | Agent build, diagnostic. **Disabled by default** |
-| `sensor.<host>_mdm_status` | sensor | MDM enrolment, diagnostic. **Disabled by default** |
+| `sensor.<host>_mdm_status` | sensor | MDM enrollment, diagnostic. **Disabled by default** |
 
 Per-host entities default to **Auto**: on for fleets of 50 hosts or fewer, off
 above that, so adding the integration to a large fleet cannot create thousands
@@ -121,7 +121,7 @@ The integration issues `GET` requests only, against these endpoints:
 `/software/titles`, `/os_versions`, `/labels` and `/activities`. It has no code
 path that writes to Fleet, runs queries, or touches hosts.
 
-If your Observer token cannot read `/config` (used only to detect your licence
+If your Observer token cannot read `/config` (used only to detect your license
 tier), the integration logs one informational message and continues in Free-tier
 mode. It does not fail setup.
 
@@ -146,7 +146,7 @@ silently going stale.
 
 | Field | Notes |
 |---|---|
-| **Fleet server URL** | e.g. `https://fleet.example.com`. Trailing slashes and a missing scheme are normalised, so you cannot accidentally add the same server twice |
+| **Fleet server URL** | e.g. `https://fleet.example.com`. Trailing slashes and a missing scheme are normalized, so you cannot accidentally add the same server twice |
 | **API token** | The API-only user token from above |
 | **Verify SSL certificate** | Leave on unless your Fleet server uses a self-signed certificate |
 
@@ -231,7 +231,7 @@ passing_host_count: 3
 host_count_updated_at: "2025-01-20T15:23:57Z"
 ```
 
-### Behaviour you can rely on
+### Behavior you can rely on
 
 - **No storm on first setup.** Adding the integration to a fleet that already
   has failing policies fires nothing. The first poll silently establishes a
@@ -245,7 +245,7 @@ host_count_updated_at: "2025-01-20T15:23:57Z"
   than firing a misleading "recovered" event.
 
 **Host events follow the same rules.** Adding the integration does not fire an
-enrolment event for every host already in the activity feed, nor a missing event
+enrollment event for every host already in the activity feed, nor a missing event
 for every host that is already stale. A host deleted from Fleet is treated as
 gone, not as newly missing.
 
@@ -307,7 +307,7 @@ automation:
 
 ### 3. A new device enrolled
 
-Fires once per enrolment, with the host's name and serial. Expected during
+Fires once per enrollment, with the host's name and serial. Expected during
 provisioning — worth a look otherwise.
 
 ```yaml
@@ -344,10 +344,10 @@ automation:
 
 ## Free vs Premium
 
-The integration detects your licence tier at setup and adapts. **Fleet Free is
+The integration detects your license tier at setup and adapts. **Fleet Free is
 fully supported** — no entity errors, no broken sensors.
 
-The one behavioural difference is `binary_sensor.fleet_compliance`:
+The one behavioral difference is `binary_sensor.fleet_compliance`:
 
 | Tier | `on` when |
 |---|---|
@@ -422,7 +422,7 @@ fleet, opinions on Phase 2's entity gating would genuinely shape the design.
 
 Please note the [read-only boundary](CONTRIBUTING.md#the-read-only-boundary):
 this integration does not modify hosts, and PRs that add host-modifying
-behaviour will not be merged.
+behavior will not be merged.
 
 ## Security
 

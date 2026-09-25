@@ -31,7 +31,7 @@ The release workflow **fails the build if the git tag does not match `version`
 in `manifest.json`** — that mismatch is the most common way to ship a wrong
 version number, since HACS installs the manifest version rather than the tag.
 
-HACS installs from the repository source, so no build artefact is needed.
+HACS installs from the repository source, so no build artifact is needed.
 `zip_release` was deliberately not used: it requires a published release before
 the HACS validation action can resolve the repository's contents, which makes
 CI fail on every commit until the first release exists.

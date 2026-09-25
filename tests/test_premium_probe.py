@@ -1,4 +1,4 @@
-"""Tests for licence tier detection and server metadata refresh.
+"""Tests for license tier detection and server metadata refresh.
 
 Regression cover for a bug where `async_is_premium` caught `FleetError`.
 `FleetAuthError` and `FleetConnectionError` both subclass it, so a rejected
@@ -52,7 +52,7 @@ async def test_connection_error_propagates_from_premium_probe(
 
 @pytest.mark.parametrize("status", [402, 403, 404])
 async def test_permission_errors_degrade_to_free(hass, aioclient_mock, status) -> None:
-    """A role or licence that genuinely cannot read /config still degrades."""
+    """A role or license that genuinely cannot read /config still degrades."""
     aioclient_mock.get(f"{API}/config", status=status)
     client = FleetClient(async_get_clientsession(hass), BASE_URL, "token")
 
@@ -91,7 +91,7 @@ async def test_metadata_not_refetched_every_poll(
 async def test_metadata_refreshed_periodically(
     hass, aioclient_mock, mock_config_entry
 ) -> None:
-    """A licence change is picked up without a reload."""
+    """A license change is picked up without a reload."""
     entry = await setup_with(
         hass, mock_config_entry, aioclient_mock, config=FREE_CONFIG_RESPONSE
     )

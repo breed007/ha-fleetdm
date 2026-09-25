@@ -6,6 +6,8 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
@@ -20,6 +22,20 @@ from custom_components.fleetdm.const import (
 BASE_URL = "https://fleet.example.com"
 API = f"{BASE_URL}/api/latest/fleet"
 
+
+def get_device(hass: HomeAssistant, entry_id: str, key: str) -> dr.DeviceEntry | None:
+    """Look up a device owned by the entry, by the value of its identifier.
+
+    Home Assistant 2026.9 rejects the unscoped `async_get_device` lookup, and
+    2025.2 predates the scoped replacement, so use whichever this version has.
+    """
+    devices = dr.async_get(hass)
+    identifier = (DOMAIN, key)
+    if hasattr(devices, "async_get_device_by_identifier"):
+        return devices.async_get_device_by_identifier(identifier, entry_id)
+    return devices.async_get_device(identifiers={identifier})
+
+
 VERSION_RESPONSE = {
     "version": "4.52.0",
     "branch": "main",
@@ -29,7 +45,7 @@ VERSION_RESPONSE = {
     "build_user": "runner",
 }
 
-# Sanitised shape of a small mixed macOS / Windows / Linux fleet.
+# Sanitized shape of a small mixed macOS / Windows / Linux fleet.
 HOST_SUMMARY_RESPONSE = {
     "totals_hosts_count": 15,
     "online_count": 12,
@@ -171,7 +187,7 @@ def labels_payload(*labels: dict[str, Any]) -> dict[str, Any]:
     return {"labels": list(labels)}
 
 
-def enrolment_activity(activity_id: int, host_id: int, name: str) -> dict[str, Any]:
+def enrollment_activity(activity_id: int, host_id: int, name: str) -> dict[str, Any]:
     """Build a `fleet_enrolled` activity, the real type a Fleet 4.x server emits."""
     return {
         "id": activity_id,

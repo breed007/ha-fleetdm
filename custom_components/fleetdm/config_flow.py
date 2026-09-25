@@ -94,7 +94,7 @@ STEP_REAUTH_SCHEMA = vol.Schema(
 async def _async_validate(
     hass: HomeAssistant, url: str, token: str, verify_ssl: bool
 ) -> str:
-    """Validate credentials against Fleet and return the normalised base URL.
+    """Validate credentials against Fleet and return the normalized base URL.
 
     Raises the API exception types unchanged so callers can map them to form
     errors.

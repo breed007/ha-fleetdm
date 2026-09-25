@@ -44,7 +44,7 @@ from .entity import (
 )
 
 # Read-only, coordinator-driven: every entity reads from an already-fetched
-# snapshot, so Home Assistant need not serialise updates across them.
+# snapshot, so Home Assistant need not serialize updates across them.
 PARALLEL_UPDATES = 0
 
 UNIT_HOSTS = "hosts"
@@ -215,7 +215,7 @@ class FleetSummarySensor(FleetEntity, SensorEntity):
         entry: FleetConfigEntry,
         description: FleetSensorEntityDescription,
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry)
         self.entity_description = description
         self._attr_unique_id = fleet_unique_id(entry.entry_id, description.key)
@@ -254,7 +254,7 @@ class FleetPolicyFailingSensor(FleetPolicyEntity, SensorEntity):
         entry: FleetConfigEntry,
         policy_id: int,
     ) -> None:
-        """Initialise the per-policy sensor."""
+        """Initialize the per-policy sensor."""
         super().__init__(coordinator, entry, policy_id, POLICY_FAILING_KEY)
 
     @property
@@ -275,7 +275,7 @@ class FleetVulnerableSoftwareSensor(FleetInventoryEntity, SensorEntity):
     def __init__(
         self, coordinator: FleetInventoryCoordinator, entry: FleetConfigEntry
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry)
         self._attr_unique_id = fleet_unique_id(entry.entry_id, "vulnerable_software")
 
@@ -340,7 +340,7 @@ class FleetLabelHostsSensor(FleetLabelEntity, SensorEntity):
         entry: FleetConfigEntry,
         label_id: int,
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry, label_id, LABEL_HOSTS_KEY)
         label = self.label
         self._attr_entity_registry_enabled_default = not (
@@ -381,7 +381,7 @@ class FleetHostFailingPoliciesSensor(FleetHostEntity, SensorEntity):
         entry: FleetConfigEntry,
         host_id: int,
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry, host_id, HOST_FAILING_POLICIES_KEY)
 
     @property
@@ -412,7 +412,7 @@ class FleetHostLastRestartedSensor(FleetHostEntity, SensorEntity):
         entry: FleetConfigEntry,
         host_id: int,
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry, host_id, HOST_LAST_RESTARTED_KEY)
 
     @property
@@ -439,7 +439,7 @@ class FleetOsVersionsSensor(FleetInventoryEntity, SensorEntity):
     def __init__(
         self, coordinator: FleetInventoryCoordinator, entry: FleetConfigEntry
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry)
         self._attr_unique_id = fleet_unique_id(entry.entry_id, "os_versions_vulnerable")
 
@@ -493,7 +493,7 @@ class FleetHostDiskPercentSensor(FleetHostEntity, SensorEntity):
         entry: FleetConfigEntry,
         host_id: int,
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry, host_id, HOST_DISK_PERCENT_KEY)
 
     @property
@@ -524,7 +524,7 @@ class FleetHostDiskFreeSensor(FleetHostEntity, SensorEntity):
         entry: FleetConfigEntry,
         host_id: int,
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry, host_id, HOST_DISK_GIGS_KEY)
 
     @property
@@ -552,7 +552,7 @@ class FleetHostOsqueryVersionSensor(FleetHostEntity, SensorEntity):
         entry: FleetConfigEntry,
         host_id: int,
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry, host_id, HOST_OSQUERY_KEY)
 
     @property
@@ -564,7 +564,7 @@ class FleetHostOsqueryVersionSensor(FleetHostEntity, SensorEntity):
 
 
 class FleetHostMdmStatusSensor(FleetHostEntity, SensorEntity):
-    """A host's MDM enrolment status as Fleet reports it.
+    """A host's MDM enrollment status as Fleet reports it.
 
     Diagnostic and disabled by default: on a fleet not using Fleet's MDM every
     one of these reads "Off", which is honest but not worth an entity each.
@@ -584,12 +584,12 @@ class FleetHostMdmStatusSensor(FleetHostEntity, SensorEntity):
         entry: FleetConfigEntry,
         host_id: int,
     ) -> None:
-        """Initialise the sensor."""
+        """Initialize the sensor."""
         super().__init__(coordinator, entry, host_id, HOST_MDM_KEY)
 
     @property
     def native_value(self) -> StateType:
-        """Return the MDM enrolment status."""
+        """Return the MDM enrollment status."""
         if (host := self.host) is None:
             return None
         return host.mdm_enrollment_status

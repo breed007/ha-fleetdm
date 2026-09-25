@@ -25,7 +25,7 @@ USER_INPUT = {
 
 
 async def test_user_flow_success(hass, aioclient_mock) -> None:
-    """A valid URL and token creates an entry keyed on the normalised URL."""
+    """A valid URL and token creates an entry keyed on the normalized URL."""
     mock_fleet(aioclient_mock)
 
     result = await hass.config_entries.flow.async_init(
@@ -54,8 +54,8 @@ async def test_user_flow_success(hass, aioclient_mock) -> None:
         ("  https://fleet.example.com  ", BASE_URL),
     ],
 )
-async def test_url_normalisation(hass, aioclient_mock, raw_url, expected) -> None:
-    """Equivalent URL spellings normalise to one unique ID."""
+async def test_url_normalization(hass, aioclient_mock, raw_url, expected) -> None:
+    """Equivalent URL spellings normalize to one unique ID."""
     mock_fleet(aioclient_mock)
 
     result = await hass.config_entries.flow.async_init(
