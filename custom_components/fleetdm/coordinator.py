@@ -563,7 +563,12 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
                     activity.created_at,
                     activity.details,
                 ):
-                    # Already pushed by the webhook.
+                    _LOGGER.debug(
+                        "Activity %s (%s, %s) already delivered by webhook",
+                        activity.id,
+                        activity.type,
+                        activity.created_at,
+                    )
                     continue
             events.append(event)
 
@@ -627,6 +632,11 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         if not self._matcher.claim(
             EVENT_SOURCE_WEBHOOK, activity.type, activity.created_at, activity.details
         ):
+            _LOGGER.debug(
+                "Webhook activity %s (%s) already fired by the poll",
+                activity.type,
+                activity.created_at,
+            )
             return
 
         _async_fire_webhook_event(self.hass, self.config_entry.entry_id, event)
