@@ -25,6 +25,11 @@ DEFAULT_TIMEOUT = 15
 # spin us forever.
 MAX_PAGES = 20
 
+# Lists that can be cut short by MAX_PAGES in a way that persists from poll to
+# poll, and so are worth telling the user about rather than only logging.
+FEED_POLICIES = "policies"
+FEED_HOSTS = "hosts"
+
 # Fleet's default page size is not documented for every list endpoint and has
 # differed between releases, so paginate explicitly rather than trusting it.
 POLICIES_PER_PAGE = 100
@@ -68,15 +73,39 @@ POLICY_PATHS = ("/policies", "/global/policies")
 
 
 class FleetError(Exception):
-    """Base error for all Fleet API failures."""
+    """Base error for all Fleet API failures.
+
+    Each error carries a translation key and placeholders alongside its English
+    message, so the coordinators can re-raise it as a translated Home Assistant
+    error without this module importing Home Assistant.
+    """
+
+    translation_key = "unexpected_response"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        translation_key: str | None = None,
+        **placeholders: str,
+    ) -> None:
+        """Store the message, and what the user-facing version needs."""
+        super().__init__(message)
+        if translation_key is not None:
+            self.translation_key = translation_key
+        self.translation_placeholders = placeholders
 
 
 class FleetConnectionError(FleetError):
     """The Fleet server could not be reached."""
 
+    translation_key = "cannot_connect"
+
 
 class FleetAuthError(FleetError):
     """The API token was rejected (HTTP 401). Triggers reauth."""
+
+    translation_key = "invalid_auth"
 
 
 class FleetNotFoundError(FleetError):
@@ -86,6 +115,8 @@ class FleetNotFoundError(FleetError):
     version supports, rather than to signal a hard failure.
     """
 
+    translation_key = "endpoint_not_found"
+
 
 class FleetForbiddenError(FleetError):
     """The token is valid but lacks permission for this endpoint (HTTP 403).
@@ -94,6 +125,8 @@ class FleetForbiddenError(FleetError):
     a token will not fix a role permission problem, and a least-privilege
     Observer token is an explicitly supported configuration.
     """
+
+    translation_key = "forbidden"
 
 
 def normalize_url(url: str) -> str:
@@ -437,6 +470,8 @@ class FleetClient:
         self._token = token
         # Resolved on the first policies fetch, then reused.
         self._policies_path: str | None = None
+        # Which feeds the most recent read of each stopped at MAX_PAGES.
+        self.truncated: set[str] = set()
 
     @property
     def base_url(self) -> str:
@@ -460,29 +495,51 @@ class FleetClient:
                 timeout=aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT),
             ) as response:
                 if response.status == 401:
-                    raise FleetAuthError(f"Fleet rejected the API token for {path}")
+                    raise FleetAuthError(
+                        f"Fleet rejected the API token for {path}", path=path
+                    )
                 # Fleet answers 402 Payment Required for Premium-gated routes.
                 if response.status in (402, 403):
                     raise FleetForbiddenError(
                         f"Fleet returned {response.status} for {path}; the token's "
-                        "role or license tier does not permit this request"
+                        "role or license tier does not permit this request",
+                        path=path,
+                        status=str(response.status),
                     )
                 if response.status == 404:
                     raise FleetNotFoundError(
-                        f"Fleet has no endpoint at {path} on this server version"
+                        f"Fleet has no endpoint at {path} on this server version",
+                        path=path,
                     )
                 response.raise_for_status()
-                return await response.json()
+                data = await response.json()
         except (FleetAuthError, FleetForbiddenError, FleetNotFoundError):
             raise
         except aiohttp.ClientResponseError as err:
-            raise FleetError(f"Fleet returned HTTP {err.status} for {path}") from err
+            raise FleetError(
+                f"Fleet returned HTTP {err.status} for {path}",
+                translation_key="http_error",
+                path=path,
+                status=str(err.status),
+            ) from err
         except (TimeoutError, aiohttp.ClientError) as err:
-            raise FleetConnectionError(f"Could not reach Fleet at {url}") from err
+            raise FleetConnectionError(
+                f"Could not reach Fleet at {url}", url=self._base_url
+            ) from err
         except ValueError as err:
             # Raised by response.json() when the body is not valid JSON, which
             # in practice means we hit something that is not a Fleet server.
-            raise FleetError(f"Fleet returned a non-JSON response for {path}") from err
+            raise FleetError(
+                f"Fleet returned a non-JSON response for {path}", path=path
+            ) from err
+
+        # Every Fleet endpoint used here answers with a JSON object. Anything
+        # else is not Fleet, and would otherwise fail later as an AttributeError.
+        if not isinstance(data, dict):
+            raise FleetError(
+                f"Fleet returned a non-object response for {path}", path=path
+            )
+        return data
 
     async def async_get_version(self) -> dict[str, Any]:
         """Return Fleet version and build info.
@@ -548,7 +605,9 @@ class FleetClient:
 
         raise FleetError(
             "Could not find a policies endpoint on this Fleet server; tried "
-            + ", ".join(POLICY_PATHS)
+            + ", ".join(POLICY_PATHS),
+            translation_key="no_policies_endpoint",
+            paths=", ".join(POLICY_PATHS),
         ) from last_error
 
     async def _async_read_policies(self, path: str) -> list[FleetPolicy]:
@@ -567,12 +626,14 @@ class FleetClient:
             batch = data.get("policies") or []
             policies.extend(FleetPolicy.from_json(policy) for policy in batch)
             if len(batch) < POLICIES_PER_PAGE:
+                self.truncated.discard(FEED_POLICIES)
                 break
         else:
-            _LOGGER.warning(
+            # Surfaced to the user as a repair issue by the coordinator.
+            self.truncated.add(FEED_POLICIES)
+            _LOGGER.debug(
                 "Stopped reading global policies at the %d page safety cap "
-                "(%d policies read). Some policies may be missing from Home "
-                "Assistant; please open an issue if you genuinely have this many",
+                "(%d policies read)",
                 MAX_PAGES,
                 len(policies),
             )
@@ -592,11 +653,13 @@ class FleetClient:
             batch = data.get("hosts") or []
             hosts.extend(FleetHost.from_json(host) for host in batch)
             if len(batch) < HOSTS_PER_PAGE:
+                self.truncated.discard(FEED_HOSTS)
                 break
         else:
-            _LOGGER.warning(
-                "Stopped reading hosts at the %d page safety cap (%d hosts read). "
-                "Some hosts will be missing from Home Assistant",
+            # Surfaced to the user as a repair issue by the coordinator.
+            self.truncated.add(FEED_HOSTS)
+            _LOGGER.debug(
+                "Stopped reading hosts at the %d page safety cap (%d hosts read)",
                 MAX_PAGES,
                 len(hosts),
             )

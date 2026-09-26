@@ -375,6 +375,15 @@ Per-policy binary sensors behave identically on both tiers.
   compliance rules, not your machines, and they are what a drift bug report
   actually needs.
 
+### Repair notices
+
+The integration reads at most 2,000 hosts and 2,000 policies, so a
+misbehaving server can never keep it paging forever. If your fleet goes past
+either limit, a notice appears under **Settings → System → Repairs** saying
+so. Everything up to the limit keeps working; anything past it has no entities
+and fires no events. The notice clears itself once the list fits again. If you
+see it on a genuine fleet, please open an issue so the limit can be raised.
+
 ---
 
 ## Roadmap

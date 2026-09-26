@@ -12,6 +12,7 @@ from the bus.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import override
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
@@ -70,6 +71,7 @@ class FleetEventEntity(FleetEntity, EventEntity):
         self._attr_unique_id = fleet_unique_id(entry.entry_id, "events")
 
     @property
+    @override
     def available(self) -> bool:
         """Available only while both coordinators are healthy.
 
@@ -80,6 +82,7 @@ class FleetEventEntity(FleetEntity, EventEntity):
         """
         return super().available and self._inventory.last_update_success
 
+    @override
     async def async_added_to_hass(self) -> None:
         """Subscribe to the inventory coordinator as well as the summary one."""
         await super().async_added_to_hass()
@@ -88,6 +91,7 @@ class FleetEventEntity(FleetEntity, EventEntity):
         )
 
     @callback
+    @override
     def _handle_coordinator_update(self) -> None:
         """Replay this cycle's policy drift events onto the entity."""
         if (data := self.coordinator.data) is not None:

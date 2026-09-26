@@ -92,3 +92,7 @@ STORAGE_KEY_INVENTORY_TEMPLATE: Final = f"{DOMAIN}.inventory.{{entry_id}}"
 ACTIVITY_TYPES_HOST_ENROLLED: Final = frozenset({"fleet_enrolled", "host_enrolled"})
 
 MANUFACTURER: Final = "Fleet Device Management"
+
+# Linked from repair issues. Translation strings may not contain URLs, so this
+# travels as the issue's "learn more" link instead.
+ISSUE_TRACKER_URL: Final = "https://github.com/breed007/ha-fleetdm/issues"

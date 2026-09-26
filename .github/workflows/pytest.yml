@@ -54,7 +54,7 @@ jobs:
             --cov-report=xml
 
       - name: Enforce coverage floor
-        if: matrix.ha-version == '2026.8'
+        if: matrix.ha-version == '2026.9'
         run: |
           pip install coverage
           coverage report --fail-under=85
@@ -70,3 +70,16 @@ jobs:
       - run: pip install ruff==0.14.2
       - run: ruff check custom_components/ tests/ scripts/
       - run: ruff format --check custom_components/ tests/ scripts/
+
+  mypy:
+    name: mypy (strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      # Type-checked against the newest Home Assistant in the test matrix, whose
+      # type hints are what the integration has to satisfy going forward.
+      - run: pip install "pytest-homeassistant-custom-component==0.13.366" mypy==2.3.1
+      - run: mypy

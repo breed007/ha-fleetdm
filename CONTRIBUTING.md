@@ -20,14 +20,19 @@ Run the checks CI runs:
 .venv/bin/python -m pytest tests/ --cov=custom_components.fleetdm --cov-report=term-missing
 .venv/bin/ruff check custom_components/ tests/
 .venv/bin/ruff format --check custom_components/ tests/
+.venv/bin/mypy
 ```
+
+mypy runs in strict mode with the same settings Home Assistant core applies to
+its strictly typed integrations; the configuration is in `pyproject.toml`.
+Methods that override a Home Assistant base class need `@override`.
 
 To test against a specific Home Assistant release, install the matching
 `pytest-homeassistant-custom-component` pin instead of `requirements-test.txt`.
 
 ## What we look for in a PR
 
-- **Tests.** Coverage is currently 98% and CI enforces a floor of 85%. Bug fixes
+- **Tests.** Coverage is currently 96% and CI enforces a floor of 85%. Bug fixes
   should come with a test that fails without the fix.
 - **No new runtime dependencies.** The integration deliberately has an empty
   `requirements` list in `manifest.json`; it uses Home Assistant's shared

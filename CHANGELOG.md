@@ -7,7 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Meets every rule of Home Assistant's integration quality scale, so the manifest
+now declares **platinum**.
+
+### Added
+
+- **A repair notice when a list is cut short.** Hosts and policies are read up
+  to a 2,000-item safety limit. Past it, the extra objects silently had no
+  entities and fired no events, with only a log line to say so. That now shows
+  under Settings → System → Repairs, and clears itself once the list fits.
+- **Translated error messages.** Connection, authentication, permission and
+  unexpected-response failures from Fleet are raised with translation keys
+  instead of English strings built in the API client.
+- **Strict type checking** in CI: mypy with the settings Home Assistant core
+  applies to its strictly typed integrations.
+
+### Fixed
+
+- **Host devices used a deprecated way to link to the Fleet hub.** On Home
+  Assistant 2026.9 this logged a deprecation warning per host device, and it
+  stops working in 2027.8. Host devices now link by the hub's registry ID where
+  Home Assistant supports it, and the hub device is registered at setup so that
+  ID always exists.
+- A Fleet response that is valid JSON but not an object is now reported as an
+  unexpected response instead of failing later with an `AttributeError`.
+
 ### Changed
+
+- The pagination safety cap for hosts and policies now logs at debug level;
+  the repair notice replaces the warning that was repeated on every poll.
 
 - CI now tests against Home Assistant 2026.9, replacing 2026.7. The tests use
   the scoped device-registry lookup that 2026.9 requires, falling back to the

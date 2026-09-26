@@ -17,9 +17,18 @@ rules:
   docs-actions:
     status: exempt
     comment: No service actions to document.
+  docs-conditions:
+    status: exempt
+    comment: The integration provides no conditions.
   docs-high-level-description: done
   docs-installation-instructions: done
   docs-removal-instructions: done
+  docs-triggers:
+    status: exempt
+    comment: |
+      The integration provides no triggers of its own. Automations use its
+      events and entities through Home Assistant's built-in triggers, which the
+      README documents with examples.
   entity-event-setup: done
   entity-unique-id: done
   has-entity-name: done
@@ -98,19 +107,22 @@ rules:
       built-in labels are all registered but disabled.
   entity-translations: done
   exception-translations:
-    status: todo
+    status: done
     comment: |
-      Coordinator failures surface English strings from the API client rather
-      than translated exceptions.
+      Each Fleet API error carries a translation key and placeholders, and the
+      coordinators re-raise it as a translated UpdateFailed or
+      ConfigEntryAuthFailed. Config flow errors were already form error keys.
   icon-translations: done
   reconfiguration-flow:
     status: done
     comment: Supports planned API token rotation before the old token is revoked.
   repair-issues:
-    status: todo
+    status: done
     comment: |
-      Nothing currently raises a repair issue. A candidate is the pagination
-      safety cap, which today only warns in the log.
+      A host or policy list cut short by the pagination safety cap raises a
+      warning issue, since the objects past the cap silently have no entities
+      and fire no events. It clears itself once the list fits. Other failures
+      are either transient, and retried, or handled by the reauth flow.
   stale-devices: done
 
   # Platinum
@@ -121,7 +133,8 @@ rules:
     status: done
     comment: Uses Home Assistant's shared aiohttp session.
   strict-typing:
-    status: todo
+    status: done
     comment: |
-      Type hints are present throughout but the integration is not yet checked
-      under mypy's strict settings in CI.
+      CI runs mypy in strict mode with the settings Home Assistant core applies
+      to its strictly typed integrations, including explicit @override. There
+      are no third-party dependencies to type.

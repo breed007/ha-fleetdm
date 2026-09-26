@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -221,16 +221,16 @@ class FleetSummarySensor(FleetEntity, SensorEntity):
         self._attr_unique_id = fleet_unique_id(entry.entry_id, description.key)
 
     @property
+    @override
     def native_value(self) -> StateType:
         """Return the current count."""
-        if self.coordinator.data is None:
-            return None
         return self.entity_description.value_fn(self.coordinator.data)
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return extra attributes, where the description supplies them."""
-        if self.coordinator.data is None or self.entity_description.attrs_fn is None:
+        if self.entity_description.attrs_fn is None:
             return None
         return self.entity_description.attrs_fn(self.coordinator.data)
 
@@ -258,6 +258,7 @@ class FleetPolicyFailingSensor(FleetPolicyEntity, SensorEntity):
         super().__init__(coordinator, entry, policy_id, POLICY_FAILING_KEY)
 
     @property
+    @override
     def native_value(self) -> StateType:
         """Return the number of hosts currently failing this policy."""
         if (policy := self.policy) is None:
@@ -280,14 +281,16 @@ class FleetVulnerableSoftwareSensor(FleetInventoryEntity, SensorEntity):
         self._attr_unique_id = fleet_unique_id(entry.entry_id, "vulnerable_software")
 
     @property
+    @override
     def native_value(self) -> StateType:
         """Return the exact number of vulnerable titles Fleet reports."""
         data = self.coordinator.data
-        if data is None or data.vulnerable is None:
+        if data.vulnerable is None:
             return None
         return data.vulnerable.count
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """List the worst titles by affected host count.
 
@@ -299,7 +302,7 @@ class FleetVulnerableSoftwareSensor(FleetInventoryEntity, SensorEntity):
         omitting it.
         """
         data = self.coordinator.data
-        if data is None or data.vulnerable is None:
+        if data.vulnerable is None:
             return None
         vulnerable = data.vulnerable
         return {
@@ -348,6 +351,7 @@ class FleetLabelHostsSensor(FleetLabelEntity, SensorEntity):
         )
 
     @property
+    @override
     def native_value(self) -> StateType:
         """Return the label's current membership count."""
         if (label := self.label) is None:
@@ -355,6 +359,7 @@ class FleetLabelHostsSensor(FleetLabelEntity, SensorEntity):
         return label.host_count
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Expose what kind of label this is and how membership is decided."""
         if (label := self.label) is None:
@@ -385,6 +390,7 @@ class FleetHostFailingPoliciesSensor(FleetHostEntity, SensorEntity):
         super().__init__(coordinator, entry, host_id, HOST_FAILING_POLICIES_KEY)
 
     @property
+    @override
     def native_value(self) -> StateType:
         """Return the host's failing policy count."""
         if (host := self.host) is None:
@@ -416,6 +422,7 @@ class FleetHostLastRestartedSensor(FleetHostEntity, SensorEntity):
         super().__init__(coordinator, entry, host_id, HOST_LAST_RESTARTED_KEY)
 
     @property
+    @override
     def native_value(self) -> datetime | None:
         """Return the host's boot time, if Fleet knows it."""
         if (host := self.host) is None:
@@ -444,18 +451,20 @@ class FleetOsVersionsSensor(FleetInventoryEntity, SensorEntity):
         self._attr_unique_id = fleet_unique_id(entry.entry_id, "os_versions_vulnerable")
 
     @property
+    @override
     def native_value(self) -> StateType:
         """Return the number of hosts on a vulnerable OS version."""
         data = self.coordinator.data
-        if data is None or data.os_versions is None:
+        if data.os_versions is None:
             return None
         return data.os_versions.vulnerable_host_count
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """List every OS version in the fleet, most common first."""
         data = self.coordinator.data
-        if data is None or data.os_versions is None:
+        if data.os_versions is None:
             return None
         versions = sorted(
             data.os_versions.versions,
@@ -497,6 +506,7 @@ class FleetHostDiskPercentSensor(FleetHostEntity, SensorEntity):
         super().__init__(coordinator, entry, host_id, HOST_DISK_PERCENT_KEY)
 
     @property
+    @override
     def native_value(self) -> StateType:
         """Return the percentage of disk still free."""
         if (host := self.host) is None:
@@ -528,6 +538,7 @@ class FleetHostDiskFreeSensor(FleetHostEntity, SensorEntity):
         super().__init__(coordinator, entry, host_id, HOST_DISK_GIGS_KEY)
 
     @property
+    @override
     def native_value(self) -> StateType:
         """Return the gigabytes still free."""
         if (host := self.host) is None:
@@ -556,6 +567,7 @@ class FleetHostOsqueryVersionSensor(FleetHostEntity, SensorEntity):
         super().__init__(coordinator, entry, host_id, HOST_OSQUERY_KEY)
 
     @property
+    @override
     def native_value(self) -> StateType:
         """Return the reported osquery version."""
         if (host := self.host) is None:
@@ -588,6 +600,7 @@ class FleetHostMdmStatusSensor(FleetHostEntity, SensorEntity):
         super().__init__(coordinator, entry, host_id, HOST_MDM_KEY)
 
     @property
+    @override
     def native_value(self) -> StateType:
         """Return the MDM enrollment status."""
         if (host := self.host) is None:
@@ -595,6 +608,7 @@ class FleetHostMdmStatusSensor(FleetHostEntity, SensorEntity):
         return host.mdm_enrollment_status
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Whether this host is actually talking to Fleet's MDM."""
         if (host := self.host) is None:

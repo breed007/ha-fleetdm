@@ -28,3 +28,28 @@ convention = "pep257"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+# Mirrors the settings Home Assistant core applies to integrations on its
+# strict-typing list, minus options that only matter inside the core repo
+# (its stubs directory, pydantic plugin and worker count).
+[tool.mypy]
+python_version = "3.14"
+files = ["custom_components/fleetdm"]
+strict = true
+show_error_codes = true
+local_partial_types = true
+strict_equality = true
+strict_bytes = true
+warn_unreachable = true
+enable_error_code = [
+  "deprecated",
+  "explicit-override",
+  "ignore-without-code",
+  "redundant-self",
+  "truthy-iterable",
+]
+disable_error_code = ["annotation-unchecked", "import-not-found", "import-untyped"]
+
+[[tool.mypy.overrides]]
+module = "homeassistant.*"
+no_implicit_reexport = true

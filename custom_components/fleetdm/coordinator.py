@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, override
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -28,6 +28,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .api import (
+    FEED_HOSTS,
+    FEED_POLICIES,
     FleetActivity,
     FleetAuthError,
     FleetClient,
@@ -73,6 +75,7 @@ from .const import (
     STORAGE_KEY_TEMPLATE,
     STORAGE_VERSION,
 )
+from .issues import async_sync_truncation_issue
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -170,6 +173,7 @@ class FleetSummaryCoordinator(DataUpdateCoordinator[FleetData]):
         # matters.
         self._has_baseline = False
 
+    @override
     async def _async_setup(self) -> None:
         """One-time setup, run before the first refresh.
 
@@ -202,11 +206,10 @@ class FleetSummaryCoordinator(DataUpdateCoordinator[FleetData]):
             # call surfaced it, and must reach the reauth flow rather than being
             # retried forever as a transient failure.
             self.premium = await self.client.async_is_premium()
-        except FleetAuthError as err:
-            raise ConfigEntryAuthFailed(str(err)) from err
         except FleetError as err:
-            raise UpdateFailed(str(err)) from err
+            raise _translated(err) from err
 
+    @override
     async def _async_update_data(self) -> FleetData:
         """Fetch host counts and policies, then diff for compliance drift."""
         self._polls_since_metadata += 1
@@ -217,11 +220,16 @@ class FleetSummaryCoordinator(DataUpdateCoordinator[FleetData]):
         try:
             summary = await self.client.async_get_host_summary()
             policies = await self.client.async_get_global_policies()
-        except FleetAuthError as err:
-            raise ConfigEntryAuthFailed(str(err)) from err
         except FleetError as err:
-            raise UpdateFailed(str(err)) from err
+            raise _translated(err) from err
 
+        async_sync_truncation_issue(
+            self.hass,
+            self.config_entry,
+            FEED_POLICIES,
+            truncated=FEED_POLICIES in self.client.truncated,
+            count=len(policies),
+        )
         events = await self._compute_drift(policies)
 
         return FleetData(
@@ -390,6 +398,7 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         )
         return timedelta(hours=float(hours))
 
+    @override
     async def _async_setup(self) -> None:
         """Restore the persisted event watermarks before the first refresh."""
         stored = await self._store.async_load()
@@ -401,6 +410,7 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
             }
             self._has_baseline = True
 
+    @override
     async def _async_update_data(self) -> FleetInventoryData:
         """Fetch hosts, vulnerable software and new activities."""
         try:
@@ -417,11 +427,16 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
             # Aggregated server-side, so this is one request whatever the fleet
             # size — cheap enough not to be worth its own option.
             os_versions = await self.client.async_get_os_versions()
-        except FleetAuthError as err:
-            raise ConfigEntryAuthFailed(str(err)) from err
         except FleetError as err:
-            raise UpdateFailed(str(err)) from err
+            raise _translated(err) from err
 
+        async_sync_truncation_issue(
+            self.hass,
+            self.config_entry,
+            FEED_HOSTS,
+            truncated=FEED_HOSTS in self.client.truncated,
+            count=len(hosts),
+        )
         events = await self._compute_events(hosts, activities)
         return FleetInventoryData(
             hosts=hosts,
@@ -524,6 +539,22 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
                 "missing_host_ids": sorted(self._missing_host_ids),
             }
         )
+
+
+def _translated(err: FleetError) -> ConfigEntryAuthFailed | UpdateFailed:
+    """Convert a Fleet API error into a translated Home Assistant error.
+
+    A rejected token becomes ConfigEntryAuthFailed so it reaches the reauth
+    flow; anything else is an ordinary failed update, retried next cycle.
+    """
+    kwargs: dict[str, Any] = {
+        "translation_domain": DOMAIN,
+        "translation_key": err.translation_key,
+        "translation_placeholders": err.translation_placeholders,
+    }
+    if isinstance(err, FleetAuthError):
+        return ConfigEntryAuthFailed(**kwargs)
+    return UpdateFailed(**kwargs)
 
 
 def per_host_entities_enabled(entry: ConfigEntry, host_count: int) -> bool:

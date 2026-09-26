@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -23,7 +24,12 @@ from .const import (
     STORAGE_VERSION,
 )
 from .coordinator import FleetInventoryCoordinator, FleetSummaryCoordinator
-from .entity import async_setup_host_device_sync, host_id_from_identifiers
+from .entity import (
+    async_setup_host_device_sync,
+    host_id_from_identifiers,
+    hub_device_info,
+)
+from .issues import async_delete_issues
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +47,7 @@ class FleetRuntimeData:
     client: FleetClient
     summary: FleetSummaryCoordinator
     inventory: FleetInventoryCoordinator
+    hub_device_id: str
 
 
 type FleetConfigEntry = ConfigEntry[FleetRuntimeData]
@@ -59,8 +66,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: FleetConfigEntry) -> boo
     inventory = FleetInventoryCoordinator(hass, entry, client)
     await inventory.async_config_entry_first_refresh()
 
+    # Registered here rather than left to the first hub entity, so host devices
+    # can link to it by registry ID however the platforms happen to be ordered.
+    hub = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, **hub_device_info(entry.entry_id, summary)
+    )
+
     entry.runtime_data = FleetRuntimeData(
-        client=client, summary=summary, inventory=inventory
+        client=client, summary=summary, inventory=inventory, hub_device_id=hub.id
     )
 
     async_setup_host_device_sync(hass, entry, inventory)
@@ -84,21 +97,23 @@ async def async_remove_config_entry_device(
     host_id = host_id_from_identifiers(entry.entry_id, device.identifiers)
     if host_id is None:
         return False
-    inventory = entry.runtime_data.inventory
-    if inventory.data is None:
-        return False
-    return host_id not in inventory.data.hosts_by_id
+    return host_id not in entry.runtime_data.inventory.data.hosts_by_id
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: FleetConfigEntry) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        # Raised afresh on the next poll if still true; stale once unloaded.
+        async_delete_issues(hass, entry.entry_id)
+    return unloaded
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Clean up persisted event state when the entry is deleted."""
+    """Clean up persisted event state and repair issues for a deleted entry."""
+    async_delete_issues(hass, entry.entry_id)
     for template in (STORAGE_KEY_TEMPLATE, STORAGE_KEY_INVENTORY_TEMPLATE):
-        store = Store[dict](
+        store = Store[dict[str, Any]](
             hass, STORAGE_VERSION, template.format(entry_id=entry.entry_id)
         )
         await store.async_remove()

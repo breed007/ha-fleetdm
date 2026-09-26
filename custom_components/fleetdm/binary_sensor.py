@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -97,19 +97,16 @@ class FleetComplianceBinarySensor(FleetEntity, BinarySensorEntity):
         self._attr_unique_id = fleet_unique_id(entry.entry_id, "compliance")
 
     @property
+    @override
     def is_on(self) -> bool | None:
         """Whether the fleet is out of compliance."""
-        if self.coordinator.data is None:
-            return None
         return self.coordinator.data.compliance_problem
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Explain which policies drove the state, and on what basis."""
         data = self.coordinator.data
-        if data is None:
-            return None
-
         failing = data.failing_policies
         # Make the Free/Premium difference visible rather than implicit: on Free
         # there is no `critical` flag, so this sensor watches every policy.
@@ -141,6 +138,7 @@ class FleetPolicyBinarySensor(FleetPolicyEntity, BinarySensorEntity):
         super().__init__(coordinator, entry, policy_id, POLICY_COMPLIANCE_KEY)
 
     @property
+    @override
     def is_on(self) -> bool | None:
         """Whether any host currently fails this policy."""
         if (policy := self.policy) is None:
@@ -152,6 +150,7 @@ class FleetHostBinarySensorBase(FleetHostEntity, BinarySensorEntity):
     """Shared attributes for the per-host binary sensors."""
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Expose the host metadata worth seeing next to the state."""
         if (host := self.host) is None:
@@ -188,6 +187,7 @@ class FleetHostOnlineBinarySensor(FleetHostBinarySensorBase):
         super().__init__(coordinator, entry, host_id, HOST_ONLINE_KEY)
 
     @property
+    @override
     def is_on(self) -> bool | None:
         """Connectivity device class: on means online."""
         if (host := self.host) is None:
@@ -215,6 +215,7 @@ class FleetHostMissingBinarySensor(FleetHostBinarySensorBase):
         super().__init__(coordinator, entry, host_id, HOST_MISSING_KEY)
 
     @property
+    @override
     def is_on(self) -> bool | None:
         """Whether the host has been unseen past the threshold."""
         if (host := self.host) is None:
