@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-25
+
 Meets every rule of Home Assistant's integration quality scale, so the manifest
-now declares **platinum**.
+now declares **platinum**. Also fixes a deprecation that logs a warning per
+host device on Home Assistant 2026.9 and would stop working in 2027.8.
 
 ### Added
 
@@ -36,7 +39,6 @@ now declares **platinum**.
 
 - The pagination safety cap for hosts and policies now logs at debug level;
   the repair notice replaces the warning that was repeated on every poll.
-
 - CI now tests against Home Assistant 2026.9, replacing 2026.7. The tests use
   the scoped device-registry lookup that 2026.9 requires, falling back to the
   old lookup on 2025.2, which predates it. The integration code itself needed
@@ -240,7 +242,8 @@ First release. Fleet-level monitoring and per-policy compliance, read-only.
   tier, with the drift baseline seeding silently rather than firing an event
   for each of the 23 already-failing policies
 
-[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/breed007/ha-fleetdm/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/breed007/ha-fleetdm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/breed007/ha-fleetdm/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/breed007/ha-fleetdm/compare/v0.1.1...v0.2.0
