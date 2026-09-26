@@ -10,6 +10,9 @@ DOMAIN: Final = "fleetdm"
 CONF_URL: Final = "url"
 CONF_API_TOKEN: Final = "api_token"
 CONF_VERIFY_SSL: Final = "verify_ssl"
+# Generated once per entry, whether or not webhooks are turned on, so the URL
+# shown in the options form never changes underneath a Fleet already using it.
+CONF_WEBHOOK_ID: Final = "webhook_id"
 
 # Options keys
 CONF_SUMMARY_INTERVAL: Final = "summary_interval"
@@ -20,6 +23,8 @@ CONF_LABEL_SENSORS: Final = "label_sensors"
 CONF_ACTIVITY_EVENTS: Final = "activity_events"
 CONF_MISSING_AFTER_HOURS: Final = "missing_after_hours"
 CONF_REDACT_HOSTNAMES: Final = "redact_hostnames_in_diagnostics"
+CONF_WEBHOOKS: Final = "webhooks"
+CONF_WEBHOOK_LOCAL_ONLY: Final = "webhook_local_only"
 
 # Option defaults
 DEFAULT_SUMMARY_INTERVAL: Final = 60
@@ -32,6 +37,11 @@ DEFAULT_LABEL_SENSORS: Final = True
 DEFAULT_ACTIVITY_EVENTS: Final = False
 DEFAULT_MISSING_AFTER_HOURS: Final = 24
 DEFAULT_REDACT_HOSTNAMES: Final = True
+# Off until asked for: an endpoint nothing posts to is attack surface for no
+# benefit. Fleet does not sign its webhooks, so the only credential is the
+# unguessable webhook ID, and by default only the local network may use it.
+DEFAULT_WEBHOOKS: Final = False
+DEFAULT_WEBHOOK_LOCAL_ONLY: Final = True
 
 # Option bounds (enforced by the options flow schema)
 MIN_SUMMARY_INTERVAL: Final = 30
@@ -61,6 +71,7 @@ EVENT_POLICY_RECOVERED: Final = "fleetdm_policy_recovered"
 EVENT_HOST_ENROLLED: Final = "fleetdm_host_enrolled"
 EVENT_HOST_MISSING: Final = "fleetdm_host_missing"
 EVENT_ACTIVITY: Final = "fleetdm_activity"
+EVENT_POLICY_HOSTS_FAILING: Final = "fleetdm_policy_hosts_failing"
 
 # `event` entity event types.
 EVENT_TYPE_POLICY_NEWLY_FAILING: Final = "policy_newly_failing"
@@ -70,6 +81,9 @@ EVENT_TYPE_HOST_WENT_MISSING: Final = "host_went_missing"
 # One generic type rather than an enumeration of Fleet's audit taxonomy,
 # which changes between releases. The specific type travels in the payload.
 EVENT_TYPE_ACTIVITY: Final = "fleet_activity"
+# Only from Fleet's failing policies webhook: polling sees per-policy counts,
+# never which hosts changed.
+EVENT_TYPE_POLICY_HOSTS_FAILING: Final = "policy_hosts_failing"
 
 EVENT_TYPES: Final = [
     EVENT_TYPE_POLICY_NEWLY_FAILING,
@@ -77,7 +91,19 @@ EVENT_TYPES: Final = [
     EVENT_TYPE_HOST_ENROLLED,
     EVENT_TYPE_HOST_WENT_MISSING,
     EVENT_TYPE_ACTIVITY,
+    EVENT_TYPE_POLICY_HOSTS_FAILING,
 ]
+
+# Where an event came from, carried in its payload.
+EVENT_SOURCE_POLL: Final = "poll"
+EVENT_SOURCE_WEBHOOK: Final = "webhook"
+
+# Dispatcher signals, formatted with the config entry ID. Webhook deliveries
+# reach entities this way rather than through a coordinator update, because
+# pushing data into a coordinator resets its polling schedule, and a busy
+# activity feed would then postpone the next poll indefinitely.
+SIGNAL_FLEET_EVENT: Final = f"{DOMAIN}_event_{{entry_id}}"
+SIGNAL_WEBHOOK_RECEIVED: Final = f"{DOMAIN}_webhook_received_{{entry_id}}"
 
 # Storage for drift state, so events survive a Home Assistant restart without
 # either re-firing for already-failing policies or losing transitions that

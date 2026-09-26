@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
+from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -18,7 +19,10 @@ from .const import (
     CONF_API_TOKEN,
     CONF_URL,
     CONF_VERIFY_SSL,
+    CONF_WEBHOOK_ID,
+    CONF_WEBHOOKS,
     DEFAULT_VERIFY_SSL,
+    DEFAULT_WEBHOOKS,
     STORAGE_KEY_INVENTORY_TEMPLATE,
     STORAGE_KEY_TEMPLATE,
     STORAGE_VERSION,
@@ -30,6 +34,7 @@ from .entity import (
     hub_device_info,
 )
 from .issues import async_delete_issues
+from .webhook_handler import FleetWebhookStatus, async_register_webhook
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +53,7 @@ class FleetRuntimeData:
     summary: FleetSummaryCoordinator
     inventory: FleetInventoryCoordinator
     hub_device_id: str
+    webhook_status: FleetWebhookStatus = field(default_factory=FleetWebhookStatus)
 
 
 type FleetConfigEntry = ConfigEntry[FleetRuntimeData]
@@ -80,6 +86,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: FleetConfigEntry) -> boo
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+
+    # After the platforms, so the event entity is listening before the first
+    # delivery can arrive.
+    if entry.options.get(CONF_WEBHOOKS, DEFAULT_WEBHOOKS):
+        async_register_webhook(hass, entry)
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Bring entries created by older releases up to date.
+
+    1.2 adds a webhook ID. It is generated whether or not webhooks are used,
+    so the URL shown in the options form is stable from the start.
+    """
+    if entry.version > 1:
+        # Created by a newer release this one does not understand.
+        return False
+
+    if entry.minor_version < 2:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, CONF_WEBHOOK_ID: webhook.async_generate_id()},
+            minor_version=2,
+        )
+        _LOGGER.debug("Migrated Fleet entry %s to version 1.2", entry.entry_id)
     return True
 
 

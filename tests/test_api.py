@@ -253,3 +253,32 @@ async def test_activities_first_read_takes_one_page(hass, aioclient_mock) -> Non
     # must stop anyway rather than walking the entire audit history.
     assert len(first) == ACTIVITIES_PER_PAGE
     assert len(aioclient_mock.mock_calls) == 1
+
+
+def test_parse_webhook_payload_shapes() -> None:
+    """Each Fleet webhook is recognized by its shape."""
+    from custom_components.fleetdm.api import (
+        FleetFailingPolicyReport,
+        FleetWebhookActivity,
+        parse_webhook_payload,
+    )
+
+    activity = parse_webhook_payload(
+        {"timestamp": "2026-09-25T12:00:00Z", "type": "ran_script", "details": None}
+    )
+    assert isinstance(activity, FleetWebhookActivity)
+    assert activity.details == {}
+
+    report = parse_webhook_payload(
+        {
+            "timestamp": "2026-09-25T12:00:00Z",
+            "policy": {"id": 3},
+            "hosts": [{"id": 1, "hostname": "h1"}],
+        }
+    )
+    assert isinstance(report, FleetFailingPolicyReport)
+    assert report.policy.name == "Policy 3"
+    # display_name falls back to hostname when Fleet leaves it empty.
+    assert report.hosts[0].display_name == "h1"
+
+    assert parse_webhook_payload({"vulnerability": {}}) is None

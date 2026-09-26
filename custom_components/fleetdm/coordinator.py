@@ -18,11 +18,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, override
+from typing import Any, Protocol, override
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -34,12 +35,14 @@ from .api import (
     FleetAuthError,
     FleetClient,
     FleetError,
+    FleetFailingPolicyReport,
     FleetHost,
     FleetHostSummary,
     FleetLabel,
     FleetOsVersions,
     FleetPolicy,
     FleetVulnerableSoftware,
+    FleetWebhookActivity,
 )
 from .const import (
     ACTIVITY_TYPES_HOST_ENROLLED,
@@ -50,6 +53,7 @@ from .const import (
     CONF_PER_HOST_ENTITIES,
     CONF_SUMMARY_INTERVAL,
     CONF_VULNERABILITY_SENSORS,
+    CONF_WEBHOOKS,
     DEFAULT_ACTIVITY_EVENTS,
     DEFAULT_INVENTORY_INTERVAL,
     DEFAULT_LABEL_SENSORS,
@@ -57,25 +61,32 @@ from .const import (
     DEFAULT_PER_HOST_ENTITIES,
     DEFAULT_SUMMARY_INTERVAL,
     DEFAULT_VULNERABILITY_SENSORS,
+    DEFAULT_WEBHOOKS,
     DOMAIN,
     EVENT_ACTIVITY,
     EVENT_HOST_ENROLLED,
     EVENT_HOST_MISSING,
     EVENT_POLICY_FAILING,
+    EVENT_POLICY_HOSTS_FAILING,
     EVENT_POLICY_RECOVERED,
+    EVENT_SOURCE_POLL,
+    EVENT_SOURCE_WEBHOOK,
     EVENT_TYPE_ACTIVITY,
     EVENT_TYPE_HOST_ENROLLED,
     EVENT_TYPE_HOST_WENT_MISSING,
+    EVENT_TYPE_POLICY_HOSTS_FAILING,
     EVENT_TYPE_POLICY_NEWLY_FAILING,
     EVENT_TYPE_POLICY_RECOVERED,
     PER_HOST_ENTITY_THRESHOLD,
     PER_HOST_OFF,
     PER_HOST_ON,
+    SIGNAL_FLEET_EVENT,
     STORAGE_KEY_INVENTORY_TEMPLATE,
     STORAGE_KEY_TEMPLATE,
     STORAGE_VERSION,
 )
 from .issues import async_sync_truncation_issue
+from .matching import ActivityMatcher
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,6 +96,15 @@ _LOGGER = logging.getLogger(__name__)
 # invisible in request volume.
 METADATA_REFRESH_EVERY = 60
 
+# Floor for how long a webhook-delivered activity waits to be matched by the
+# poll, and vice versa. Fleet retries a webhook for up to 30 minutes.
+MIN_MATCH_RETENTION = timedelta(hours=2)
+
+# Delay before persisting webhook bookkeeping, so a burst of deliveries is one
+# write. A crash inside this window can re-fire those activities once on the
+# next poll, which is the lesser failure next to losing them.
+WEBHOOK_SAVE_DELAY = 5
+
 # Bus event type fired for each `event` entity event type.
 _BUS_EVENT_FOR_TYPE = {
     EVENT_TYPE_POLICY_NEWLY_FAILING: EVENT_POLICY_FAILING,
@@ -92,6 +112,7 @@ _BUS_EVENT_FOR_TYPE = {
     EVENT_TYPE_HOST_ENROLLED: EVENT_HOST_ENROLLED,
     EVENT_TYPE_HOST_WENT_MISSING: EVENT_HOST_MISSING,
     EVENT_TYPE_ACTIVITY: EVENT_ACTIVITY,
+    EVENT_TYPE_POLICY_HOSTS_FAILING: EVENT_POLICY_HOSTS_FAILING,
 }
 
 
@@ -101,6 +122,41 @@ class FleetDriftEvent:
 
     event_type: str
     data: dict[str, Any]
+
+
+class _ActivityRecord(Protocol):
+    """What the event payloads need from a polled or webhook activity."""
+
+    @property
+    def type(self) -> str: ...
+
+    @property
+    def created_at(self) -> datetime | None: ...
+
+    @property
+    def details(self) -> dict[str, Any]: ...
+
+
+@callback
+def _async_fire_bus_event(
+    hass: HomeAssistant, entry_id: str, event: FleetDriftEvent
+) -> None:
+    """Fire the bus event that mirrors an `event` entity event."""
+    if (bus_event := _BUS_EVENT_FOR_TYPE.get(event.event_type)) is not None:
+        hass.bus.async_fire(bus_event, {"entry_id": entry_id, **event.data})
+
+
+@callback
+def _async_fire_webhook_event(
+    hass: HomeAssistant, entry_id: str, event: FleetDriftEvent
+) -> None:
+    """Fire a webhook-delivered event on the bus and on the event entity.
+
+    Polled events reach the event entity through the coordinator's data; these
+    arrive between polls, so they are signaled to it directly.
+    """
+    _async_fire_bus_event(hass, entry_id, event)
+    async_dispatcher_send(hass, SIGNAL_FLEET_EVENT.format(entry_id=entry_id), event)
 
 
 @dataclass(slots=True)
@@ -299,22 +355,24 @@ class FleetSummaryCoordinator(DataUpdateCoordinator[FleetData]):
         await self._async_save_drift_state()
 
         for event in events:
-            self._fire_bus_event(event)
+            _async_fire_bus_event(self.hass, self.config_entry.entry_id, event)
 
         return events
 
-    def _fire_bus_event(self, event: FleetDriftEvent) -> None:
-        """Fire the bus event that mirrors an `event` entity event."""
-        bus_event = _BUS_EVENT_FOR_TYPE.get(event.event_type)
-        if bus_event is None:
-            return
-        self.hass.bus.async_fire(
-            bus_event,
-            {"entry_id": self.config_entry.entry_id, **event.data},
+    @callback
+    def async_process_failing_policy_report(
+        self, report: FleetFailingPolicyReport
+    ) -> None:
+        """Fire an event for hosts Fleet's failing policies webhook reported.
+
+        No de-duplication is needed: Fleet removes hosts from its failing set
+        once a delivery succeeds, and polling never produces this event.
+        """
+        event = FleetDriftEvent(
+            event_type=EVENT_TYPE_POLICY_HOSTS_FAILING,
+            data=_failing_policy_report_payload(report),
         )
-        _LOGGER.debug(
-            "Fired %s for policy %s", bus_event, event.data.get("policy_name")
-        )
+        _async_fire_webhook_event(self.hass, self.config_entry.entry_id, event)
 
     async def _async_save_drift_state(self) -> None:
         """Persist the failing set.
@@ -389,6 +447,21 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         self._last_activity_id: int | None = None
         self._missing_host_ids: set[int] = set()
         self._has_baseline = False
+        self._matcher = ActivityMatcher(
+            retention=max(MIN_MATCH_RETENTION, 3 * timedelta(seconds=interval))
+        )
+
+    @property
+    def webhooks_enabled(self) -> bool:
+        """Whether activities may also arrive by webhook and need matching."""
+        return bool(self.config_entry.options.get(CONF_WEBHOOKS, DEFAULT_WEBHOOKS))
+
+    @property
+    def activity_events_enabled(self) -> bool:
+        """Whether every activity fires an event, not only enrollments."""
+        return bool(
+            self.config_entry.options.get(CONF_ACTIVITY_EVENTS, DEFAULT_ACTIVITY_EVENTS)
+        )
 
     @property
     def missing_after(self) -> timedelta:
@@ -408,6 +481,7 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
             self._missing_host_ids = {
                 int(host_id) for host_id in stored.get("missing_host_ids", [])
             }
+            self._matcher.restore(stored.get("activity_sightings"))
             self._has_baseline = True
 
     @override
@@ -477,24 +551,21 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         events: list[FleetDriftEvent] = []
         by_id = {host.id: host for host in hosts}
 
-        emit_activities = self.config_entry.options.get(
-            CONF_ACTIVITY_EVENTS, DEFAULT_ACTIVITY_EVENTS
-        )
+        matched = False
         for activity in sorted(activities, key=lambda a: a.id):
-            if activity.type in ACTIVITY_TYPES_HOST_ENROLLED:
-                events.append(
-                    FleetDriftEvent(
-                        event_type=EVENT_TYPE_HOST_ENROLLED,
-                        data=_enrollment_event_payload(activity),
-                    )
-                )
-            elif emit_activities:
-                events.append(
-                    FleetDriftEvent(
-                        event_type=EVENT_TYPE_ACTIVITY,
-                        data=_activity_event_payload(activity),
-                    )
-                )
+            if (event := self._activity_event(activity, activity.id)) is None:
+                continue
+            if self.webhooks_enabled:
+                matched = True
+                if not self._matcher.claim(
+                    EVENT_SOURCE_POLL,
+                    activity.type,
+                    activity.created_at,
+                    activity.details,
+                ):
+                    # Already pushed by the webhook.
+                    continue
+            events.append(event)
 
         # Only hosts still present in Fleet: one deleted while missing is gone,
         # not newly missing.
@@ -508,8 +579,13 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         ]
 
         changed = (
-            newest_activity is not None and newest_activity != self._last_activity_id
-        ) or currently_missing != self._missing_host_ids
+            matched
+            or (
+                newest_activity is not None
+                and newest_activity != self._last_activity_id
+            )
+            or currently_missing != self._missing_host_ids
+        )
         if newest_activity is not None:
             self._last_activity_id = newest_activity
         self._missing_host_ids = currently_missing
@@ -517,28 +593,61 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
             await self._async_save()
 
         for event in events:
-            self._fire_bus_event(event)
+            _async_fire_bus_event(self.hass, self.config_entry.entry_id, event)
 
         return events
 
-    def _fire_bus_event(self, event: FleetDriftEvent) -> None:
-        """Fire the bus event that mirrors an `event` entity event."""
-        bus_event = _BUS_EVENT_FOR_TYPE.get(event.event_type)
-        if bus_event is None:
+    def _activity_event(
+        self, activity: _ActivityRecord, activity_id: int | None
+    ) -> FleetDriftEvent | None:
+        """Build the event an activity fires, or None if it fires nothing.
+
+        Shared by the poll and the webhook, so both produce identical payloads
+        apart from the ID, which webhook deliveries do not carry.
+        """
+        source = EVENT_SOURCE_WEBHOOK if activity_id is None else EVENT_SOURCE_POLL
+        if activity.type in ACTIVITY_TYPES_HOST_ENROLLED:
+            return FleetDriftEvent(
+                event_type=EVENT_TYPE_HOST_ENROLLED,
+                data=_enrollment_event_payload(activity, activity_id, source),
+            )
+        if self.activity_events_enabled:
+            return FleetDriftEvent(
+                event_type=EVENT_TYPE_ACTIVITY,
+                data=_activity_event_payload(activity, activity_id, source),
+            )
+        return None
+
+    async def async_process_webhook_activity(
+        self, activity: FleetWebhookActivity
+    ) -> None:
+        """Fire the event for an activity Fleet pushed, unless already polled."""
+        if (event := self._activity_event(activity, None)) is None:
             return
-        self.hass.bus.async_fire(
-            bus_event,
-            {"entry_id": self.config_entry.entry_id, **event.data},
-        )
+        if not self._matcher.claim(
+            EVENT_SOURCE_WEBHOOK, activity.type, activity.created_at, activity.details
+        ):
+            return
+
+        _async_fire_webhook_event(self.hass, self.config_entry.entry_id, event)
+        self._store.async_delay_save(self._store_data, WEBHOOK_SAVE_DELAY)
+
+        if event.event_type == EVENT_TYPE_HOST_ENROLLED:
+            # The new host is not in the host list until the next inventory
+            # poll. Bring that forward so its device appears promptly too.
+            await self.async_request_refresh()
+
+    def _store_data(self) -> dict[str, Any]:
+        """Everything the inventory coordinator persists."""
+        return {
+            "last_activity_id": self._last_activity_id,
+            "missing_host_ids": sorted(self._missing_host_ids),
+            "activity_sightings": self._matcher.as_json(),
+        }
 
     async def _async_save(self) -> None:
         """Persist the event watermarks."""
-        await self._store.async_save(
-            {
-                "last_activity_id": self._last_activity_id,
-                "missing_host_ids": sorted(self._missing_host_ids),
-            }
-        )
+        await self._store.async_save(self._store_data())
 
 
 def _translated(err: FleetError) -> ConfigEntryAuthFailed | UpdateFailed:
@@ -584,19 +693,24 @@ def per_host_entities_enabled(entry: ConfigEntry, host_count: int) -> bool:
     return host_count <= PER_HOST_ENTITY_THRESHOLD
 
 
-def _enrollment_event_payload(activity: FleetActivity) -> dict[str, Any]:
+def _enrollment_event_payload(
+    activity: _ActivityRecord, activity_id: int | None, source: str
+) -> dict[str, Any]:
     """Build the automation-facing payload for a host enrollment."""
     details = activity.details
     return {
         "host_id": details.get("host_id"),
         "host_name": details.get("host_display_name"),
         "host_serial": details.get("host_serial"),
-        "activity_id": activity.id,
+        "activity_id": activity_id,
         "enrolled_at": activity.created_at.isoformat() if activity.created_at else None,
+        "source": source,
     }
 
 
-def _activity_event_payload(activity: FleetActivity) -> dict[str, Any]:
+def _activity_event_payload(
+    activity: _ActivityRecord, activity_id: int | None, source: str
+) -> dict[str, Any]:
     """Build the payload for a generic Fleet audit activity.
 
     The Fleet activity type travels in the payload rather than becoming its own
@@ -605,10 +719,11 @@ def _activity_event_payload(activity: FleetActivity) -> dict[str, Any]:
     nowhere until this integration caught up.
     """
     return {
-        "activity_id": activity.id,
+        "activity_id": activity_id,
         "activity_type": activity.type,
         "created_at": activity.created_at.isoformat() if activity.created_at else None,
         "details": activity.details,
+        "source": source,
     }
 
 
@@ -640,4 +755,27 @@ def _policy_event_payload(policy: FleetPolicy) -> dict[str, Any]:
         "failing_host_count": policy.failing_host_count,
         "passing_host_count": policy.passing_host_count,
         "host_count_updated_at": policy.host_count_updated_at,
+    }
+
+
+def _failing_policy_report_payload(report: FleetFailingPolicyReport) -> dict[str, Any]:
+    """Build the payload for hosts that started failing a policy.
+
+    The policy fields match the drift events', so one automation template can
+    read either.
+    """
+    return {
+        **_policy_event_payload(report.policy),
+        "hosts": [
+            {
+                "host_id": host.id,
+                "host_name": host.display_name,
+                "hostname": host.hostname,
+                "url": host.url,
+            }
+            for host in report.hosts
+        ],
+        "host_count": len(report.hosts),
+        "reported_at": report.reported_at.isoformat() if report.reported_at else None,
+        "source": EVENT_SOURCE_WEBHOOK,
     }

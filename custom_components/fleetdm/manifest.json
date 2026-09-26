@@ -3,6 +3,7 @@
   "name": "Fleet",
   "codeowners": ["@breed007"],
   "config_flow": true,
+  "dependencies": ["webhook"],
   "documentation": "https://github.com/breed007/ha-fleetdm",
   "integration_type": "hub",
   "iot_class": "local_polling",

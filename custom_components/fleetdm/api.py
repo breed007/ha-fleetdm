@@ -434,6 +434,94 @@ class FleetActivity:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class FleetWebhookActivity:
+    """An activity as Fleet's activities webhook delivers it.
+
+    Fleet sends the webhook with the same timestamp and details it then stores,
+    so this is the same record the polled feed returns later, but without the
+    activity ID: Fleet assigns that when it writes the row, after sending.
+    """
+
+    type: str
+    created_at: datetime | None
+    details: dict[str, Any]
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> FleetWebhookActivity:
+        """Build an activity from an activities webhook payload."""
+        details = data.get("details")
+        return cls(
+            type=str(data.get("type") or ""),
+            created_at=parse_fleet_time(data.get("timestamp")),
+            details=details if isinstance(details, dict) else {},
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FleetFailingHost:
+    """A host named in a failing policies webhook."""
+
+    id: int
+    hostname: str
+    display_name: str
+    url: str
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> FleetFailingHost:
+        """Build a host from one entry of the webhook's host list."""
+        return cls(
+            id=int(data["id"]),
+            hostname=str(data.get("hostname") or ""),
+            display_name=str(data.get("display_name") or data.get("hostname") or ""),
+            url=str(data.get("url") or ""),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FleetFailingPolicyReport:
+    """One delivery from Fleet's failing policies webhook.
+
+    Lists the hosts that started failing one policy since Fleet's previous run
+    of the webhook, which is information polling cannot give: the policies
+    endpoint only has counts. Fleet may split a long host list across several
+    deliveries.
+    """
+
+    reported_at: datetime | None
+    policy: FleetPolicy
+    hosts: list[FleetFailingHost]
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> FleetFailingPolicyReport:
+        """Build a report from a failing policies webhook payload."""
+        return cls(
+            reported_at=parse_fleet_time(data.get("timestamp")),
+            policy=FleetPolicy.from_json(data["policy"]),
+            hosts=[FleetFailingHost.from_json(host) for host in data["hosts"]],
+        )
+
+
+def parse_webhook_payload(
+    data: dict[str, Any],
+) -> FleetWebhookActivity | FleetFailingPolicyReport | None:
+    """Work out which Fleet webhook sent a payload, and parse it.
+
+    Fleet's webhooks share no envelope or type field, so they are told apart by
+    shape. Returns None for Fleet webhooks this integration does not consume,
+    such as vulnerabilities and host status, so a Fleet pointing every webhook
+    at the same URL is harmless.
+
+    Raises KeyError, TypeError or ValueError for a payload that has a known
+    shape but cannot be read.
+    """
+    if isinstance(data.get("policy"), dict) and isinstance(data.get("hosts"), list):
+        return FleetFailingPolicyReport.from_json(data)
+    if isinstance(data.get("type"), str) and "details" in data:
+        return FleetWebhookActivity.from_json(data)
+    return None
+
+
 def _opt_float(value: Any) -> float | None:
     """Coerce to float, or None when Fleet has no value."""
     try:

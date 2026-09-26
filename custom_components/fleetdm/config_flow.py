@@ -7,6 +7,7 @@ from typing import Any, override
 from urllib.parse import urlsplit
 
 import voluptuous as vol
+from homeassistant.components import webhook
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -47,6 +48,9 @@ from .const import (
     CONF_URL,
     CONF_VERIFY_SSL,
     CONF_VULNERABILITY_SENSORS,
+    CONF_WEBHOOK_ID,
+    CONF_WEBHOOK_LOCAL_ONLY,
+    CONF_WEBHOOKS,
     DEFAULT_ACTIVITY_EVENTS,
     DEFAULT_INVENTORY_INTERVAL,
     DEFAULT_LABEL_SENSORS,
@@ -56,6 +60,8 @@ from .const import (
     DEFAULT_SUMMARY_INTERVAL,
     DEFAULT_VERIFY_SSL,
     DEFAULT_VULNERABILITY_SENSORS,
+    DEFAULT_WEBHOOK_LOCAL_ONLY,
+    DEFAULT_WEBHOOKS,
     DOMAIN,
     MAX_INVENTORY_INTERVAL,
     MAX_MISSING_AFTER_HOURS,
@@ -67,6 +73,7 @@ from .const import (
     PER_HOST_OFF,
     PER_HOST_ON,
 )
+from .webhook_handler import async_webhook_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -110,6 +117,7 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the Fleet config flow."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     @override
     async def async_step_user(
@@ -140,7 +148,11 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=urlsplit(base_url).hostname or "Fleet",
-                    data={**user_input, CONF_URL: base_url},
+                    data={
+                        **user_input,
+                        CONF_URL: base_url,
+                        CONF_WEBHOOK_ID: webhook.async_generate_id(),
+                    },
                 )
 
         return self.async_show_form(
@@ -347,11 +359,26 @@ class FleetOptionsFlow(OptionsFlow):
                         CONF_REDACT_HOSTNAMES, DEFAULT_REDACT_HOSTNAMES
                     ),
                 ): BooleanSelector(),
+                vol.Required(
+                    CONF_WEBHOOKS,
+                    default=options.get(CONF_WEBHOOKS, DEFAULT_WEBHOOKS),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_WEBHOOK_LOCAL_ONLY,
+                    default=options.get(
+                        CONF_WEBHOOK_LOCAL_ONLY, DEFAULT_WEBHOOK_LOCAL_ONLY
+                    ),
+                ): BooleanSelector(),
             }
         )
 
         return self.async_show_form(
             step_id="init",
             data_schema=schema,
-            description_placeholders={"host_count": str(host_count)},
+            description_placeholders={
+                "host_count": str(host_count),
+                "webhook_url": async_webhook_url(
+                    self.hass, self.config_entry.data[CONF_WEBHOOK_ID]
+                ),
+            },
         )
