@@ -13,14 +13,20 @@ from .const import (
     CONF_API_TOKEN,
     CONF_REDACT_HOSTNAMES,
     CONF_URL,
+    CONF_WEBHOOK_ID,
+    CONF_WEBHOOK_LOCAL_ONLY,
+    CONF_WEBHOOKS,
     DEFAULT_REDACT_HOSTNAMES,
+    DEFAULT_WEBHOOK_LOCAL_ONLY,
+    DEFAULT_WEBHOOKS,
 )
 
 REDACTED = "**REDACTED**"
 
-# The token is redacted unconditionally. Nothing in a diagnostics download
-# should ever be able to authenticate against a Fleet server.
-TO_REDACT = {CONF_API_TOKEN}
+# Redacted unconditionally. Nothing in a diagnostics download should be able
+# to authenticate against Fleet, and the webhook ID is the only thing standing
+# between anyone who can reach Home Assistant and firing events into it.
+TO_REDACT = {CONF_API_TOKEN, CONF_WEBHOOK_ID}
 
 
 def _redact_url(url: str) -> str:
@@ -158,5 +164,18 @@ async def async_get_config_entry_diagnostics(
                     for title in inv.vulnerable.worst
                 ],
             }
+
+    status = entry.runtime_data.webhook_status
+    payload["webhooks"] = {
+        "enabled": entry.options.get(CONF_WEBHOOKS, DEFAULT_WEBHOOKS),
+        "local_only": entry.options.get(
+            CONF_WEBHOOK_LOCAL_ONLY, DEFAULT_WEBHOOK_LOCAL_ONLY
+        ),
+        "last_received": (
+            status.last_received.isoformat() if status.last_received else None
+        ),
+        "last_kind": status.last_kind,
+        "deliveries_since_start": dict(status.counts),
+    }
 
     return payload

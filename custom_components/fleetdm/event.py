@@ -3,8 +3,9 @@
 The `event` entity is the timeline/UI surface for everything Fleet tells us has
 changed. For automations prefer the matching bus events
 (``fleetdm_policy_failing``, ``fleetdm_policy_recovered``,
-``fleetdm_host_enrolled`` and ``fleetdm_host_missing``), which the coordinators
-fire once per transition with the full payload — an `event` entity can only hold
+``fleetdm_host_enrolled``, ``fleetdm_host_missing`` and, from webhooks,
+``fleetdm_policy_hosts_failing``), which fire once per transition with the full
+payload — an `event` entity can only hold
 one event at a time, so several transitions in the same poll are best consumed
 from the bus.
 """
@@ -16,10 +17,11 @@ from typing import override
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import FleetConfigEntry
-from .const import EVENT_TYPES
+from .const import EVENT_TYPES, SIGNAL_FLEET_EVENT
 from .coordinator import (
     FleetDriftEvent,
     FleetInventoryCoordinator,
@@ -84,11 +86,23 @@ class FleetEventEntity(FleetEntity, EventEntity):
 
     @override
     async def async_added_to_hass(self) -> None:
-        """Subscribe to the inventory coordinator as well as the summary one."""
+        """Subscribe to the inventory coordinator and to webhook deliveries."""
         await super().async_added_to_hass()
         self.async_on_remove(
             self._inventory.async_add_listener(self._handle_inventory_update)
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_FLEET_EVENT.format(entry_id=self._entry.entry_id),
+                self._handle_webhook_event,
+            )
+        )
+
+    @callback
+    def _handle_webhook_event(self, event: FleetDriftEvent) -> None:
+        """Record an event Fleet pushed between polls."""
+        self._replay([event])
 
     @callback
     @override

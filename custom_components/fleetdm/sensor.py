@@ -9,13 +9,16 @@ from functools import partial
 from typing import Any, override
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, EntityCategory, Platform, UnitOfInformation
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
@@ -23,8 +26,12 @@ from . import FleetConfigEntry
 from .const import (
     CONF_LABEL_SENSORS,
     CONF_VULNERABILITY_SENSORS,
+    CONF_WEBHOOKS,
     DEFAULT_LABEL_SENSORS,
     DEFAULT_VULNERABILITY_SENSORS,
+    DEFAULT_WEBHOOKS,
+    DOMAIN,
+    SIGNAL_WEBHOOK_RECEIVED,
 )
 from .coordinator import (
     FleetData,
@@ -174,6 +181,9 @@ async def async_setup_entry(
         )
 
     async_add_entities([FleetOsVersionsSensor(inventory, entry)])
+
+    if entry.options.get(CONF_WEBHOOKS, DEFAULT_WEBHOOKS):
+        async_add_entities([FleetLastWebhookSensor(entry)])
 
     for key, factory in (
         (HOST_FAILING_POLICIES_KEY, FleetHostFailingPoliciesSensor),
@@ -614,3 +624,67 @@ class FleetHostMdmStatusSensor(FleetHostEntity, SensorEntity):
         if (host := self.host) is None:
             return None
         return {"connected_to_fleet": host.mdm_connected}
+
+
+class FleetLastWebhookSensor(RestoreSensor):
+    """When Fleet last reached Home Assistant through the webhook.
+
+    Answers "is Fleet actually reaching me?" after pasting the URL into Fleet.
+    Deliveries are otherwise invisible until one of them fires an event, and
+    the failing policies webhook may run only once a day.
+
+    Not tied to either coordinator: deliveries arrive whether or not polling is
+    healthy, and this should keep reporting them when it is not.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "last_webhook"
+
+    def __init__(self, entry: FleetConfigEntry) -> None:
+        """Initialize the sensor on the hub device."""
+        self._entry = entry
+        self._attr_unique_id = fleet_unique_id(entry.entry_id, "last_webhook")
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, entry.entry_id)})
+
+    @override
+    async def async_added_to_hass(self) -> None:
+        """Restore the last delivery time and listen for new ones."""
+        await super().async_added_to_hass()
+        status = self._entry.runtime_data.webhook_status
+        last = await self.async_get_last_sensor_data()
+        if (
+            status.last_received is None
+            and last is not None
+            and isinstance(last.native_value, datetime)
+        ):
+            status.last_received = last.native_value
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_WEBHOOK_RECEIVED.format(entry_id=self._entry.entry_id),
+                self._handle_delivery,
+            )
+        )
+
+    @callback
+    def _handle_delivery(self) -> None:
+        self.async_write_ha_state()
+
+    @property
+    @override
+    def native_value(self) -> datetime | None:
+        """When the last delivery arrived."""
+        return self._entry.runtime_data.webhook_status.last_received
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """What the last delivery was, and counts since Home Assistant started."""
+        status = self._entry.runtime_data.webhook_status
+        return {
+            "last_kind": status.last_kind,
+            "deliveries_since_start": dict(status.counts),
+        }

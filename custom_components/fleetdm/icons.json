@@ -48,6 +48,9 @@
       },
       "policy_failing_hosts": {
         "default": "mdi:shield-alert-outline"
+      },
+      "last_webhook": {
+        "default": "mdi:webhook"
       }
     },
     "binary_sensor": {

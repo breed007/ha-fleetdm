@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Webhook push from Fleet**, off by default. Turn it on in the options, and
+  the form shows the URL to give Fleet.
+  - Fleet's **activities webhook** delivers host enrollments, and opt-in
+    activity events, within seconds instead of up to one inventory interval.
+  - Fleet's **failing policies webhook** fires the new
+    `fleetdm_policy_hosts_failing` event, naming the hosts that started
+    failing a policy. Polling only ever sees counts, so this is new
+    information rather than faster information.
+  - Polling continues alongside, because Fleet does not retry a failed
+    delivery. Activities that arrive both ways are matched, including across
+    a restart, and fire once.
+  - Deliveries are accepted from the local network only by default. The
+    webhook ID is redacted from diagnostics.
+- `sensor.fleet_last_webhook_received`, a diagnostic timestamp showing whether
+  Fleet is reaching Home Assistant at all.
+- A `source` key (`poll` or `webhook`) on host enrollment and activity events.
+
+### Changed
+
+- Config entries move to version 1.2, which adds a webhook ID. Existing entries
+  are migrated automatically.
+
 ## [0.5.0] - 2026-09-25
 
 Meets every rule of Home Assistant's integration quality scale, so the manifest

@@ -39,6 +39,7 @@ recent Home Assistant releases plus that floor.
 | `sensor.fleet_label_<name>` | sensor | Hosts matching each Fleet label. Built-in labels are **disabled by default** |
 | `sensor.fleet_hosts_on_vulnerable_os` | sensor | Hosts running an OS version with known CVEs. Attribute lists the full OS spread |
 | `event.fleet_fleet_events` | event | Timeline of compliance and host events |
+| `sensor.fleet_last_webhook_received` | sensor (`timestamp`) | When Fleet last reached Home Assistant. Only with [webhooks](#webhooks-optional) on |
 
 ### Per host
 
@@ -168,6 +169,8 @@ IP, and turning verification off to work around that is the wrong fix.
 | Label host-count sensors | on | One per label. Fleet's built-ins are created but disabled |
 | Fleet activity events | off | Fire an event for every audit entry. Noisy on an active Fleet |
 | Redact hostnames in diagnostics | on | See [Diagnostics](#diagnostics) |
+| Accept webhooks from Fleet | off | See [Webhooks](#webhooks-optional). The form shows the URL to give Fleet |
+| Only accept webhooks from the local network | on | Turn off only if Fleet posts from outside your network |
 
 ---
 
@@ -248,6 +251,73 @@ host_count_updated_at: "2025-01-20T15:23:57Z"
 enrollment event for every host already in the activity feed, nor a missing event
 for every host that is already stale. A host deleted from Fleet is treated as
 gone, not as newly missing.
+
+---
+
+## Webhooks (optional)
+
+Polling means an enrollment can take up to one inventory interval (5 minutes
+by default) to reach Home Assistant. Fleet can push instead. With webhooks on,
+the integration accepts two of Fleet's webhooks:
+
+| Fleet webhook | What you get | How fast |
+|---|---|---|
+| **Activities** | `fleetdm_host_enrolled`, and `fleetdm_activity` if activity events are on | Seconds |
+| **Failing policies** | `fleetdm_policy_hosts_failing`, naming *which hosts* started failing a policy. Polling only ever sees counts | Fleet's webhook interval, **24 hours by default** |
+
+**Polling carries on alongside, and nothing fires twice.** Fleet does not retry
+a failed delivery, so anything it sends while Home Assistant is restarting is
+lost. The next poll picks those up. Activities that arrive both ways are
+matched and fire once, whichever arrives first. Events carry `source: webhook`
+or `source: poll`, and a pushed activity has no `activity_id`, because Fleet
+assigns the ID after sending.
+
+### Setting it up
+
+1. **Settings → Devices & Services → Fleet → Configure.** Turn on **Accept
+   webhooks from Fleet** and save. Open the form again and copy the URL from
+   its description.
+2. **Activities:** in Fleet, go to **Dashboard**, and on the **Activity** card
+   open its automations. Enable them and paste the URL as the destination.
+3. **Failing policies:** in Fleet, go to **Policies → Manage automations**,
+   choose **Webhook** under the other workflows, paste the URL, and tick the
+   policies to report on.
+4. Check **`sensor.fleet_last_webhook_received`**. It updates on every delivery,
+   including ones that fire no event, so it tells you whether Fleet is getting
+   through.
+
+Fleet runs the failing policies webhook on its global webhook interval,
+`webhook_settings.interval`, which defaults to `24h`. Shorten it with GitOps or
+the Fleet API if daily is too slow. Pointing Fleet's other webhooks, such as
+vulnerabilities or host status, at the same URL is harmless: they are
+acknowledged and ignored.
+
+### Security
+
+Fleet does not sign its webhooks, so **the URL is the credential**. It contains
+a random 256-bit ID, it is redacted from diagnostics, and by default Home
+Assistant accepts it only from your local network. Only turn off **Only accept
+webhooks from the local network** if your Fleet server posts from outside it,
+and then only over HTTPS.
+
+`fleetdm_policy_hosts_failing` payload:
+
+```yaml
+entry_id: 01JABCDEF...
+policy_id: 2
+policy_name: Windows disks encrypted
+critical: true
+failing_host_count: 2
+# ...the other policy fields, as in the drift events above
+hosts:
+  - host_id: 7
+    host_name: Carol's ThinkPad
+    hostname: carol-tp
+    url: https://fleet.example.com/hosts/7
+host_count: 1
+reported_at: "2026-09-25T12:00:00.123456+00:00"
+source: webhook
+```
 
 ---
 
@@ -391,12 +461,15 @@ see it on a genuine fleet, please open an issue so the limit can be raised.
 **Phase 1** — config flow with reauth, fleet-level sensors, per-policy
 compliance entities, compliance drift events, diagnostics.
 
-**Phase 2 (current)** — per-host devices and entities with size gating,
-vulnerable software sensor, `host_enrolled` and `host_went_missing` events.
+**Phase 2** — per-host devices and entities with size gating, vulnerable
+software sensor, `host_enrolled` and `host_went_missing` events.
+
+**Since then** — per-label host counts (0.3), disk, MDM and OS-version sensors
+(0.4), the platinum quality scale (0.5), and webhook push for activities and
+failing policies (0.6).
 
 **Still open** — team filtering (Fleet Premium only, so it does nothing on
-Free), per-host disk encryption (needs a request per host), and webhook push
-for near-real-time events instead of polling latency.
+Free) and per-host disk encryption (needs a request per host).
 
 **Phase 3** — optionally running *pre-existing saved queries* from Home
 Assistant. Never arbitrary SQL, and it will require a higher-privilege token

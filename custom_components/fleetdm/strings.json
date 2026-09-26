@@ -53,7 +53,7 @@
     "step": {
       "init": {
         "title": "Fleet options",
-        "description": "Fleet host status and policy counts only refresh as fast as your osquery agents check in, so polling faster than about a minute rarely surfaces anything new. This fleet currently has {host_count} hosts.",
+        "description": "Fleet host status and policy counts only refresh as fast as your osquery agents check in, so polling faster than about a minute rarely surfaces anything new. This fleet currently has {host_count} hosts.\n\nTo have Fleet push activities and failing policies instead of waiting for the next poll, turn on webhooks below, then paste this URL into Fleet's activity and policy automations: {webhook_url}",
         "data": {
           "summary_interval": "Update interval",
           "redact_hostnames_in_diagnostics": "Redact hostnames in diagnostics",
@@ -62,7 +62,9 @@
           "missing_after_hours": "Treat a host as missing after",
           "vulnerability_sensors": "Vulnerable software sensor",
           "label_sensors": "Label host-count sensors",
-          "activity_events": "Fleet activity events"
+          "activity_events": "Fleet activity events",
+          "webhooks": "Accept webhooks from Fleet",
+          "webhook_local_only": "Only accept webhooks from the local network"
         },
         "data_description": {
           "summary_interval": "How often to poll Fleet for host counts and policy compliance, in seconds.",
@@ -72,7 +74,9 @@
           "missing_after_hours": "How long a host may go without checking in before its missing sensor turns on and a host-missing event fires. Independent of Fleet's own 30-day missing bucket.",
           "vulnerability_sensors": "Track how many software titles have known vulnerabilities.",
           "label_sensors": "One sensor per Fleet label showing how many hosts match it. Fleet's own built-in labels are created but disabled, since several are always empty and All Hosts just restates the total.",
-          "activity_events": "Fire an event for every entry in Fleet's audit feed — script runs, logins, policy edits and so on — with the Fleet activity type in the payload. Off by default because an active Fleet writes a great many of these."
+          "activity_events": "Fire an event for every entry in Fleet's audit feed — script runs, logins, policy edits and so on — with the Fleet activity type in the payload. Off by default because an active Fleet writes a great many of these.",
+          "webhooks": "Fire host enrollment and activity events the moment Fleet records them, and an event naming the hosts that start failing a policy. Polling carries on alongside, and nothing fires twice.",
+          "webhook_local_only": "Fleet does not sign its webhooks, so the URL is the only credential. Leave this on unless your Fleet server posts from outside your network."
         }
       }
     }
@@ -126,6 +130,9 @@
       },
       "host_mdm_status": {
         "name": "MDM status"
+      },
+      "last_webhook": {
+        "name": "Last webhook received"
       }
     },
     "binary_sensor": {
@@ -152,7 +159,8 @@
               "policy_recovered": "Policy recovered",
               "host_enrolled": "Host enrolled",
               "host_went_missing": "Host went missing",
-              "fleet_activity": "Fleet activity"
+              "fleet_activity": "Fleet activity",
+              "policy_hosts_failing": "Hosts started failing a policy"
             }
           }
         }
