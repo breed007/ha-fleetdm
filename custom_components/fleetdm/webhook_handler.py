@@ -121,6 +121,9 @@ async def _async_handle_webhook(
     if not isinstance(data, dict):
         _LOGGER.debug("Ignoring a Fleet webhook body that is not a JSON object")
         return web.Response(status=HTTPStatus.BAD_REQUEST)
+    # The whole body, at debug only: it is what a bug report about an
+    # unrecognized or mismatched delivery needs, and it can name users and hosts.
+    _LOGGER.debug("Fleet webhook body: %s", data)
 
     try:
         payload = parse_webhook_payload(data)
