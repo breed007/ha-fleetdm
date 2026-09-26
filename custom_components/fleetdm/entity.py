@@ -2,23 +2,39 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from typing import Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, override
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 
 from .api import FleetHost, FleetLabel, FleetPolicy
 from .const import DOMAIN, MANUFACTURER
 from .coordinator import (
+    FleetData,
     FleetInventoryCoordinator,
+    FleetInventoryData,
     FleetSummaryCoordinator,
     per_host_entities_enabled,
+)
+
+if TYPE_CHECKING:
+    from . import FleetConfigEntry
+
+# Home Assistant 2026.9 deprecated linking a device to its parent by the
+# parent's identifier, removing it in 2027.8, in favor of the parent's registry
+# ID. 2025.2 accepts only the identifier. Use whichever this version has.
+_LINK_BY_DEVICE_ID = "via_device_id" in (
+    DeviceInfo.__required_keys__ | DeviceInfo.__optional_keys__
 )
 
 
@@ -36,6 +52,18 @@ def fleet_unique_id(entry_id: str, key: str) -> str:
     return f"{entry_id}_{key}"
 
 
+def hub_device_info(entry_id: str, coordinator: FleetSummaryCoordinator) -> DeviceInfo:
+    """Describe the Fleet server itself, the device everything else hangs off."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry_id)},
+        name="Fleet",
+        manufacturer=MANUFACTURER,
+        model="Fleet server",
+        sw_version=coordinator.version.get("version"),
+        configuration_url=coordinator.client.base_url,
+    )
+
+
 class FleetEntity(CoordinatorEntity[FleetSummaryCoordinator]):
     """Base entity attached to the Fleet server hub device."""
 
@@ -47,38 +75,44 @@ class FleetEntity(CoordinatorEntity[FleetSummaryCoordinator]):
         """Initialize the entity and bind it to the hub device."""
         super().__init__(coordinator)
         self._entry = entry
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name="Fleet",
-            manufacturer=MANUFACTURER,
-            model="Fleet server",
-            sw_version=coordinator.version.get("version"),
-            configuration_url=coordinator.client.base_url,
-        )
+        self._attr_device_info = hub_device_info(entry.entry_id, coordinator)
 
 
-class DynamicNameMixin:
-    """For entities whose translated name embeds a remote object's name.
+class DynamicNameEntity[CoordinatorT: DataUpdateCoordinator[Any]](
+    CoordinatorEntity[CoordinatorT]
+):
+    """An entity whose translated name embeds a remote object's name.
 
-    Home Assistant caches ``Entity.name``, which is correct for static names but
-    would freeze ours at whatever the policy or label was called when the entity
-    was first added. Dropping that cache on each refresh lets a rename in Fleet
-    reach the UI, while keeping the surrounding wording translatable rather than
-    hard-coded into an f-string.
+    The object's name goes in as a translation placeholder rather than an
+    f-string, so the surrounding wording stays translatable. But Home Assistant
+    caches ``Entity.name``, which would freeze it at whatever the policy or
+    label was called when the entity was first added. Refreshing the
+    placeholders and dropping that cache on each update lets a rename in Fleet
+    reach the UI.
 
     The rename tests are the guard here: if Home Assistant ever stops caching
     the name in the instance dict, they still pass, and if it changes to a cache
     this cannot reach, they fail loudly rather than silently going stale.
     """
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Invalidate the cached name before writing state."""
+    def _name_placeholders(self) -> dict[str, str]:
+        """Return the placeholders for the translated name, from current data."""
+        raise NotImplementedError
+
+    def _refresh_name(self) -> None:
+        """Re-read the object's name and drop the cached entity name."""
+        self._attr_translation_placeholders = self._name_placeholders()
         self.__dict__.pop("name", None)
+
+    @callback
+    @override
+    def _handle_coordinator_update(self) -> None:
+        """Pick up a rename before writing state."""
+        self._refresh_name()
         super()._handle_coordinator_update()
 
 
-class FleetPolicyEntity(DynamicNameMixin, FleetEntity):
+class FleetPolicyEntity(DynamicNameEntity[FleetSummaryCoordinator], FleetEntity):
     """Base entity for a single Fleet global policy."""
 
     def __init__(
@@ -92,31 +126,27 @@ class FleetPolicyEntity(DynamicNameMixin, FleetEntity):
         super().__init__(coordinator, entry)
         self._policy_id = policy_id
         self._attr_unique_id = policy_unique_id(entry.entry_id, policy_id, key)
+        self._refresh_name()
 
     @property
     def policy(self) -> FleetPolicy | None:
         """The policy this entity tracks, or None if it vanished from Fleet."""
-        if self.coordinator.data is None:
-            return None
         return self.coordinator.data.policies_by_id.get(self._policy_id)
 
     @property
+    @override
     def available(self) -> bool:
         """Only available while the policy still exists in Fleet."""
         return super().available and self.policy is not None
 
-    @property
-    def translation_placeholders(self) -> Mapping[str, str]:
-        """Feed the policy's current name into its translated entity name.
-
-        A placeholder rather than an f-string so the surrounding wording stays
-        translatable, and resolved per read so a policy renamed in Fleet is
-        renamed here on the next poll.
-        """
+    @override
+    def _name_placeholders(self) -> dict[str, str]:
+        """Feed the policy's current name into its translated entity name."""
         policy = self.policy
         return {"policy": policy.name if policy else ""}
 
     @property
+    @override
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Expose the policy's counts and metadata."""
         if (policy := self.policy) is None:
@@ -140,7 +170,7 @@ def label_unique_id(entry_id: str, label_id: int, key: str) -> str:
     return f"{entry_id}_label_{label_id}_{key}"
 
 
-class FleetLabelEntity(DynamicNameMixin, CoordinatorEntity[FleetInventoryCoordinator]):
+class FleetLabelEntity(DynamicNameEntity[FleetInventoryCoordinator]):
     """Base entity for a single Fleet label, on the hub device."""
 
     _attr_has_entity_name = True
@@ -158,21 +188,21 @@ class FleetLabelEntity(DynamicNameMixin, CoordinatorEntity[FleetInventoryCoordin
         self._label_id = label_id
         self._attr_unique_id = label_unique_id(entry.entry_id, label_id, key)
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, entry.entry_id)})
+        self._refresh_name()
 
     @property
     def label(self) -> FleetLabel | None:
         """The label this entity tracks, or None if it was deleted."""
-        if self.coordinator.data is None:
-            return None
         return self.coordinator.data.labels_by_id.get(self._label_id)
 
     @property
+    @override
     def available(self) -> bool:
         """Only available while the label still exists in Fleet."""
         return super().available and self.label is not None
 
-    @property
-    def translation_placeholders(self) -> Mapping[str, str]:
+    @override
+    def _name_placeholders(self) -> dict[str, str]:
         """Feed the label's current name into its translated entity name."""
         label = self.label
         return {"label": label.name if label else ""}
@@ -214,7 +244,7 @@ class FleetHostEntity(CoordinatorEntity[FleetInventoryCoordinator]):
     def __init__(
         self,
         coordinator: FleetInventoryCoordinator,
-        entry: ConfigEntry,
+        entry: FleetConfigEntry,
         host_id: int,
         key: str,
     ) -> None:
@@ -225,24 +255,27 @@ class FleetHostEntity(CoordinatorEntity[FleetInventoryCoordinator]):
         self._attr_unique_id = host_unique_id(entry.entry_id, host_id, key)
 
         host = self.host
-        self._attr_device_info = DeviceInfo(
+        device_info = DeviceInfo(
             identifiers={(DOMAIN, host_device_identifier(entry.entry_id, host_id))},
             name=host.display_name if host else f"Host {host_id}",
             manufacturer=MANUFACTURER,
             model=_host_model(host),
             sw_version=host.os_version if host else None,
-            via_device=(DOMAIN, entry.entry_id),
             configuration_url=coordinator.client.host_page_url(host_id),
         )
+        if _LINK_BY_DEVICE_ID:
+            device_info["via_device_id"] = entry.runtime_data.hub_device_id
+        else:
+            device_info["via_device"] = (DOMAIN, entry.entry_id)  # type: ignore[typeddict-unknown-key]
+        self._attr_device_info = device_info
 
     @property
     def host(self) -> FleetHost | None:
         """The host this entity tracks, or None if it left Fleet."""
-        if self.coordinator.data is None:
-            return None
         return self.coordinator.data.hosts_by_id.get(self._host_id)
 
     @property
+    @override
     def available(self) -> bool:
         """Only available while the host still exists in Fleet.
 
@@ -295,9 +328,6 @@ def async_setup_host_device_sync(
 
     @callback
     def _sync_devices() -> None:
-        if coordinator.data is None:
-            return
-
         registry = dr.async_get(hass)
         hosts = coordinator.data.hosts_by_id
 
@@ -341,15 +371,15 @@ def _host_model(host: FleetHost | None) -> str | None:
 
 
 @callback
-def async_setup_dynamic_entities(
+def async_setup_dynamic_entities[DataT](
     hass: HomeAssistant,
     entry: ConfigEntry,
-    coordinator: Any,
+    coordinator: DataUpdateCoordinator[DataT],
     async_add_entities: AddEntitiesCallback,
     platform: str,
-    current_ids: Callable[[Any], set[int]],
+    current_ids: Callable[[DataT], set[int]],
     unique_id_for: Callable[[int], str],
-    factory: Callable[[int], Any],
+    factory: Callable[[int], Entity],
 ) -> None:
     """Track a set of Fleet objects, creating and removing entities to match.
 
@@ -363,8 +393,6 @@ def async_setup_dynamic_entities(
 
     @callback
     def _sync_entities() -> None:
-        if coordinator.data is None:
-            return
         current = current_ids(coordinator.data)
 
         if added := current - known:
@@ -392,7 +420,7 @@ def async_setup_dynamic_host_entities(
     async_add_entities: AddEntitiesCallback,
     platform: str,
     key: str,
-    factory: Callable[[int], Any],
+    factory: Callable[[int], Entity],
 ) -> None:
     """Track hosts as they enroll in and leave Fleet.
 
@@ -401,7 +429,7 @@ def async_setup_dynamic_host_entities(
     of quietly continuing to add them.
     """
 
-    def _gated_host_ids(data: Any) -> set[int]:
+    def _gated_host_ids(data: FleetInventoryData) -> set[int]:
         if not per_host_entities_enabled(entry, len(data.hosts)):
             return set()
         return set(data.hosts_by_id)
@@ -426,7 +454,7 @@ def async_setup_dynamic_policy_entities(
     async_add_entities: AddEntitiesCallback,
     platform: str,
     key: str,
-    factory: Callable[[int], Any],
+    factory: Callable[[int], Entity],
 ) -> None:
     """Track global policies as they are created and deleted in Fleet."""
     async_setup_dynamic_entities(
@@ -435,7 +463,7 @@ def async_setup_dynamic_policy_entities(
         coordinator,
         async_add_entities,
         platform,
-        lambda data: set(data.policies_by_id),
+        _policy_ids,
         lambda policy_id: policy_unique_id(entry.entry_id, policy_id, key),
         factory,
     )
@@ -449,7 +477,7 @@ def async_setup_dynamic_label_entities(
     async_add_entities: AddEntitiesCallback,
     platform: str,
     key: str,
-    factory: Callable[[int], Any],
+    factory: Callable[[int], Entity],
 ) -> None:
     """Track labels as they are created and deleted in Fleet."""
     async_setup_dynamic_entities(
@@ -458,7 +486,17 @@ def async_setup_dynamic_label_entities(
         coordinator,
         async_add_entities,
         platform,
-        lambda data: set(data.labels_by_id),
+        _label_ids,
         lambda label_id: label_unique_id(entry.entry_id, label_id, key),
         factory,
     )
+
+
+def _policy_ids(data: FleetData) -> set[int]:
+    """Read the current policy IDs out of a summary snapshot."""
+    return set(data.policies_by_id)
+
+
+def _label_ids(data: FleetInventoryData) -> set[int]:
+    """Read the current label IDs out of an inventory snapshot."""
+    return set(data.labels_by_id)

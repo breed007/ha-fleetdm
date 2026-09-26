@@ -132,7 +132,7 @@ async def test_policies_paginate(hass, aioclient_mock) -> None:
     assert policies[-1].id == POLICIES_PER_PAGE + 4
 
 
-async def test_policies_pagination_safety_cap(hass, aioclient_mock, caplog) -> None:
+async def test_policies_pagination_safety_cap(hass, aioclient_mock) -> None:
     """A server that never returns a short page is stopped at the cap."""
     aioclient_mock.get(
         f"{API}/policies",
@@ -147,7 +147,7 @@ async def test_policies_pagination_safety_cap(hass, aioclient_mock, caplog) -> N
     policies = await client.async_get_global_policies()
 
     assert len(policies) == MAX_PAGES * POLICIES_PER_PAGE
-    assert "safety cap" in caplog.text
+    assert client.truncated == {"policies"}
 
 
 async def test_policies_falls_back_to_legacy_path(hass, aioclient_mock) -> None:

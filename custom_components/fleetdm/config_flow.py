@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, override
 from urllib.parse import urlsplit
 
 import voluptuous as vol
@@ -111,6 +111,7 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @override
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -245,6 +246,7 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
+    @override
     def async_get_options_flow(config_entry: ConfigEntry) -> FleetOptionsFlow:
         """Return the options flow handler."""
         return FleetOptionsFlow()

@@ -1,5 +1,6 @@
-# Pinned to Home Assistant 2026.8.x. The CI matrix in .github/workflows/pytest.yml
-# also runs the previous Home Assistant minor; keep the two in sync when bumping.
-pytest-homeassistant-custom-component==0.13.354
+# Pinned to Home Assistant 2026.9.x, the newest row of the CI matrix in
+# .github/workflows/pytest.yml. Keep the two in sync when bumping.
+pytest-homeassistant-custom-component==0.13.366
 pytest-cov==7.0.0
 ruff==0.14.2
+mypy==2.3.1

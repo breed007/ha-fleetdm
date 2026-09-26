@@ -167,5 +167,38 @@
         "off": "Never"
       }
     }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Could not reach the Fleet server at {url}."
+    },
+    "invalid_auth": {
+      "message": "Fleet rejected the API token while reading {path}."
+    },
+    "forbidden": {
+      "message": "Fleet refused {path} with HTTP {status}. The API token's role or the server's license tier does not allow this request."
+    },
+    "endpoint_not_found": {
+      "message": "This Fleet server has no endpoint at {path}. It may be running an older or newer Fleet release than this integration supports."
+    },
+    "http_error": {
+      "message": "Fleet returned HTTP {status} for {path}."
+    },
+    "unexpected_response": {
+      "message": "Fleet returned an unexpected response for {path}. Check that the configured URL points at a Fleet server."
+    },
+    "no_policies_endpoint": {
+      "message": "Could not find a policies endpoint on this Fleet server. Tried: {paths}."
+    }
+  },
+  "issues": {
+    "hosts_truncated": {
+      "title": "Not every Fleet host is being read",
+      "description": "Home Assistant stopped reading hosts from {server} at its safety limit of {count} hosts. Hosts beyond that have no entities and fire no host events.\n\nIf your fleet really has more hosts than this, please report it on the integration's issue tracker so the limit can be raised. This notice clears itself once the full list fits."
+    },
+    "policies_truncated": {
+      "title": "Not every Fleet policy is being read",
+      "description": "Home Assistant stopped reading policies from {server} at its safety limit of {count} policies. Policies beyond that have no entities, fire no drift events, and are left out of the compliance sensor.\n\nIf you really have more policies than this, please report it on the integration's issue tracker so the limit can be raised. This notice clears itself once the full list fits."
+    }
   }
 }
