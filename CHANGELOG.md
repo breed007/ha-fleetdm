@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-25
+
+Fleet can now push to Home Assistant instead of waiting to be polled. It is
+opt-in, and nothing changes until you turn it on.
+
+Payload handling follows Fleet's own source at v4.92.1 and has not yet been
+checked against deliveries from a live server. If an activity fires twice or a
+delivery is not recognized, turn on debug logging for `custom_components.fleetdm`
+and open an issue with the logged webhook body.
+
 ### Added
 
 - **Webhook push from Fleet**, off by default. Turn it on in the options, and
@@ -266,7 +276,8 @@ First release. Fleet-level monitoring and per-policy compliance, read-only.
   tier, with the drift baseline seeding silently rather than firing an event
   for each of the 23 already-failing policies
 
-[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/breed007/ha-fleetdm/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/breed007/ha-fleetdm/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/breed007/ha-fleetdm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/breed007/ha-fleetdm/compare/v0.2.0...v0.3.0
