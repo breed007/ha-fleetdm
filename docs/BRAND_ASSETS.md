@@ -89,6 +89,11 @@ Tracked upstream:
 - [hacs/integration#5223](https://github.com/hacs/integration/issues/5223) — downloads panel shows 'icon not available'
 - [hacs/integration#5402](https://github.com/hacs/integration/issues/5402) — local branding works, HACS still shows the placeholder
 
+Two pull requests that would have fixed it,
+[hacs/integration#5388](https://github.com/hacs/integration/pull/5388) and
+[#5524](https://github.com/hacs/integration/pull/5524), were closed without
+merging, so as of October 2026 there is no fix in sight upstream.
+
 **Do not cut a release to "fix" this.** Nothing shipped from here changes it.
 
 ### Trademark note

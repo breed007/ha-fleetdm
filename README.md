@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/breed007/ha-fleetdm/actions/workflows/pytest.yml/badge.svg)](https://github.com/breed007/ha-fleetdm/actions/workflows/pytest.yml)
 [![Validate](https://github.com/breed007/ha-fleetdm/actions/workflows/validate.yml/badge.svg)](https://github.com/breed007/ha-fleetdm/actions/workflows/validate.yml)
-[![hacs](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
+[![hacs](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Bring your endpoint security posture into Home Assistant: which hosts are online,
@@ -15,10 +15,11 @@ osquery-based device management platform. It is read-only by design.
 **Requires Home Assistant 2025.2.0 or later.** CI tests against the two most
 recent Home Assistant releases plus that floor.
 
-> Fleet-level counts, per-policy compliance, per-host devices with disk and
-> agent detail, vulnerable software, per-label host counts, an OS-version
-> rollup, and events for compliance drift, host enrollment and hosts going
-> missing. See [Roadmap](#roadmap) for what's next.
+> Fleet-level counts, per-policy compliance, per-host devices with disk,
+> encryption and agent detail, vulnerable software, per-label host counts, an
+> OS-version rollup, events for compliance drift, host enrollment and hosts
+> going missing, and [ready-made automations](#blueprints) for all of them.
+> See [Roadmap](#roadmap) for what's next.
 
 ---
 
@@ -38,6 +39,7 @@ recent Home Assistant releases plus that floor.
 | `sensor.fleet_vulnerable_software` | sensor | Software titles with known CVEs. Attribute lists the most widespread |
 | `sensor.fleet_label_<name>` | sensor | Hosts matching each Fleet label. Built-in labels are **disabled by default** |
 | `sensor.fleet_hosts_on_vulnerable_os` | sensor | Hosts running an OS version with known CVEs. Attribute lists the full OS spread |
+| `sensor.fleet_hosts_without_disk_encryption` | sensor | Hosts reporting an unencrypted disk, named in an attribute. Needs Fleet 4.93+ |
 | `event.fleet_fleet_events` | event | Timeline of compliance and host events |
 | `sensor.fleet_last_webhook_received` | sensor (`timestamp`) | When Fleet last reached Home Assistant. Only with [webhooks](#webhooks-optional) on |
 
@@ -51,6 +53,7 @@ Each enrolled host becomes its own device, linked to the Fleet hub, with a
 | `binary_sensor.<host>_online` | binary_sensor (`connectivity`) | Whether Fleet has heard from it recently |
 | `binary_sensor.<host>_missing` | binary_sensor (`problem`) | Unseen longer than your configured window |
 | `sensor.<host>_failing_policies` | sensor | How many policies this host fails |
+| `binary_sensor.<host>_disk_encryption` | binary_sensor | FileVault, BitLocker or LUKS. `on` = encrypted. Needs Fleet 4.93+ |
 | `sensor.<host>_disk_free` | sensor (`%`) | Free disk space |
 | `sensor.<host>_last_restarted` | sensor (`timestamp`) | Boot time. **Disabled by default** |
 | `sensor.<host>_disk_free_space` | sensor (`GB`) | Free disk in gigabytes. **Disabled by default** |
@@ -61,10 +64,14 @@ Per-host entities default to **Auto**: on for fleets of 50 hosts or fewer, off
 above that, so adding the integration to a large fleet cannot create thousands
 of entities by surprise. A fleet that grows past 50 while set to Auto will have
 its per-host entities removed — set the option to **Always** to keep them.
+Their devices go with them, so a large fleet is not left with dozens of empty
+devices.
 
-Fleet reports per-host disk *encryption* only on its per-host detail endpoint,
-so surfacing it would cost one request per host on every cycle. It is left out
-deliberately rather than paying that.
+Disk encryption needs **Fleet 4.93 or later**, which added it to the host list
+the integration already reads. On older servers those entities are not
+created; they appear by themselves once Fleet is upgraded. Earlier Fleet
+releases only report it per host, which would cost a request per host on every
+cycle.
 
 Every policy entity carries `passing_host_count`, `failing_host_count`,
 `critical`, `platform`, `resolution` and `host_count_updated_at` as attributes.
@@ -83,10 +90,13 @@ policy, each named after the policy in Fleet.*
 
 ### HACS (recommended)
 
-1. In HACS, open the three-dot menu → **Custom repositories**.
-2. Add `https://github.com/breed007/ha-fleetdm` with category **Integration**.
-3. Install **Fleet**, then restart Home Assistant.
-4. **Settings → Devices & Services → Add Integration → Fleet**.
+Fleet is in the HACS default store, so there is no repository to add.
+
+[![Open in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=breed007&repository=ha-fleetdm&category=integration)
+
+1. In HACS, search for **Fleet** and open it, or use the button above.
+2. **Download**, then restart Home Assistant.
+3. **Settings → Devices & Services → Add Integration → Fleet**.
 
 ### Manual
 
@@ -321,7 +331,27 @@ source: webhook
 
 ---
 
+## Blueprints
+
+Ready-made automations. Each one fills in the trigger and leaves you to choose
+what happens, such as a notification to your phone.
+
+| Blueprint | Fires when | |
+|---|---|---|
+| A policy started failing | A policy goes from passing everywhere to failing somewhere. Optionally critical policies only (Fleet Premium) | [![Import blueprint.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fbreed007%2Fha-fleetdm%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Ffleetdm%2Fpolicy_failing.yaml) |
+| A host went missing | A host stops checking in for longer than your configured window | [![Import blueprint.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fbreed007%2Fha-fleetdm%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Ffleetdm%2Fhost_missing.yaml) |
+| A new host enrolled | Any host enrolls. Within seconds with [webhooks](#webhooks-optional) on | [![Import blueprint.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fbreed007%2Fha-fleetdm%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Ffleetdm%2Fhost_enrolled.yaml) |
+| A host's disk is not encrypted | Any host reports an unencrypted disk. Fleet 4.93+ | [![Import blueprint.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fbreed007%2Fha-fleetdm%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Ffleetdm%2Funencrypted_disk.yaml) |
+
+Each blueprint's description lists the event data its actions can use. To edit
+one by hand instead, the YAML is in
+[`blueprints/automation/fleetdm`](blueprints/automation/fleetdm).
+
+---
+
 ## Example automations
+
+Written out by hand, for when a blueprint does not fit.
 
 ### 1. A critical policy started failing
 
@@ -465,11 +495,11 @@ compliance entities, compliance drift events, diagnostics.
 software sensor, `host_enrolled` and `host_went_missing` events.
 
 **Since then** — per-label host counts (0.3), disk, MDM and OS-version sensors
-(0.4), the platinum quality scale (0.5), and webhook push for activities and
-failing policies (0.6).
+(0.4), the platinum quality scale (0.5), webhook push for activities and
+failing policies (0.6), and disk encryption and blueprints (0.7).
 
 **Still open** — team filtering (Fleet Premium only, so it does nothing on
-Free) and per-host disk encryption (needs a request per host).
+Free).
 
 **Phase 3** — optionally running *pre-existing saved queries* from Home
 Assistant. Never arbitrary SQL, and it will require a higher-privilege token
