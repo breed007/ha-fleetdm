@@ -133,6 +133,9 @@
       },
       "last_webhook": {
         "name": "Last webhook received"
+      },
+      "hosts_unencrypted": {
+        "name": "Hosts without disk encryption"
       }
     },
     "binary_sensor": {
@@ -147,6 +150,9 @@
       },
       "policy": {
         "name": "{policy}"
+      },
+      "host_disk_encryption": {
+        "name": "Disk encryption"
       }
     },
     "event": {

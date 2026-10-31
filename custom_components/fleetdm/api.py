@@ -10,6 +10,7 @@ this role can't read that" (degrade gracefully).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -240,6 +241,10 @@ class FleetHost:
     disk_percent_available: int | None
     mdm_enrollment_status: str
     mdm_connected: bool
+    # None when this host does not report it. Distinct from the server not
+    # supporting it at all, which disk_encryption_reported captures.
+    disk_encryption_enabled: bool | None
+    disk_encryption_reported: bool
 
     @property
     def is_online(self) -> bool:
@@ -291,11 +296,13 @@ class FleetHost:
             last_restarted_at=parse_fleet_time(data.get("last_restarted_at")),
             disk_gigs_available=_opt_float(data.get("gigs_disk_space_available")),
             disk_percent_available=_opt_int(data.get("percent_disk_space_available")),
-            # Fleet also exposes disk_encryption_enabled, but only on the
-            # per-host detail endpoint. Reading it would cost one request per
-            # host on every cycle, which is exactly the N+1 this model avoids.
             mdm_enrollment_status=str(mdm.get("enrollment_status") or "unknown"),
             mdm_connected=bool(mdm.get("connected_to_fleet", False)),
+            # In the host list since Fleet 4.93. Earlier servers have it only on
+            # the per-host detail endpoint, which would cost a request per host
+            # on every cycle, so there it is simply unavailable.
+            disk_encryption_enabled=_opt_bool(data.get("disk_encryption_enabled")),
+            disk_encryption_reported="disk_encryption_enabled" in data,
         )
 
 
@@ -530,12 +537,39 @@ def _opt_float(value: Any) -> float | None:
         return None
 
 
+def _opt_bool(value: Any) -> bool | None:
+    """Coerce to bool, or None when Fleet has no value."""
+    return value if isinstance(value, bool) else None
+
+
 def _opt_int(value: Any) -> int | None:
     """Coerce to int, or None when Fleet has no value."""
     try:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _parse_items[T](
+    items: Any, parse: Callable[[dict[str, Any]], T], kind: str
+) -> list[T]:
+    """Parse a list from Fleet, skipping any entry that cannot be read.
+
+    One malformed entry, such as a host without an ID, used to raise out of the
+    coordinator as an unexpected error and take every other entry down with it.
+    Skipping it keeps the rest of the fleet visible.
+    """
+    if not isinstance(items, list):
+        return []
+    parsed: list[T] = []
+    for item in items:
+        try:
+            parsed.append(parse(item))
+        except (AttributeError, KeyError, TypeError, ValueError) as err:
+            _LOGGER.debug(
+                "Skipping a Fleet %s entry that could not be read: %r", kind, err
+            )
+    return parsed
 
 
 class FleetClient:
@@ -603,6 +637,13 @@ class FleetClient:
                 data = await response.json()
         except (FleetAuthError, FleetForbiddenError, FleetNotFoundError):
             raise
+        except aiohttp.ContentTypeError as err:
+            # A 200 that is not JSON at all, such as a login page or a reverse
+            # proxy's error page. aiohttp raises this as a response error, so
+            # it must be caught first or it would read as "HTTP 200".
+            raise FleetError(
+                f"Fleet returned a non-JSON response for {path}", path=path
+            ) from err
         except aiohttp.ClientResponseError as err:
             raise FleetError(
                 f"Fleet returned HTTP {err.status} for {path}",
@@ -712,7 +753,7 @@ class FleetClient:
                 {"page": page, "per_page": POLICIES_PER_PAGE},
             )
             batch = data.get("policies") or []
-            policies.extend(FleetPolicy.from_json(policy) for policy in batch)
+            policies.extend(_parse_items(batch, FleetPolicy.from_json, "policy"))
             if len(batch) < POLICIES_PER_PAGE:
                 self.truncated.discard(FEED_POLICIES)
                 break
@@ -739,7 +780,7 @@ class FleetClient:
         for page in range(MAX_PAGES):
             data = await self._get("/hosts", {"page": page, "per_page": HOSTS_PER_PAGE})
             batch = data.get("hosts") or []
-            hosts.extend(FleetHost.from_json(host) for host in batch)
+            hosts.extend(_parse_items(batch, FleetHost.from_json, "host"))
             if len(batch) < HOSTS_PER_PAGE:
                 self.truncated.discard(FEED_HOSTS)
                 break
@@ -773,10 +814,9 @@ class FleetClient:
         return FleetVulnerableSoftware(
             count=int(data.get("count") or 0),
             counts_updated_at=parse_fleet_time(data.get("counts_updated_at")),
-            worst=[
-                FleetSoftwareTitle.from_json(title)
-                for title in (data.get("software_titles") or [])
-            ],
+            worst=_parse_items(
+                data.get("software_titles"), FleetSoftwareTitle.from_json, "software"
+            ),
         )
 
     async def async_get_os_versions(self) -> FleetOsVersions:
@@ -786,10 +826,9 @@ class FleetClient:
         """
         data = await self._get("/os_versions")
         return FleetOsVersions(
-            versions=[
-                FleetOsVersion.from_json(item)
-                for item in (data.get("os_versions") or [])
-            ],
+            versions=_parse_items(
+                data.get("os_versions"), FleetOsVersion.from_json, "OS version"
+            ),
             counts_updated_at=parse_fleet_time(data.get("counts_updated_at")),
         )
 
@@ -800,7 +839,7 @@ class FleetClient:
         library large enough to need paging would be unusual.
         """
         data = await self._get("/labels")
-        return [FleetLabel.from_json(label) for label in (data.get("labels") or [])]
+        return _parse_items(data.get("labels"), FleetLabel.from_json, "label")
 
     async def async_get_activities(
         self, after_id: int | None = None
@@ -823,8 +862,7 @@ class FleetClient:
                 break
 
             reached_watermark = False
-            for item in batch:
-                activity = FleetActivity.from_json(item)
+            for activity in _parse_items(batch, FleetActivity.from_json, "activity"):
                 if after_id is not None and activity.id <= after_id:
                     reached_watermark = True
                     break

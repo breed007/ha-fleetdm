@@ -23,6 +23,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from . import FleetConfigEntry
+from .api import FleetHost
 from .const import (
     CONF_LABEL_SENSORS,
     CONF_VULNERABILITY_SENSORS,
@@ -36,6 +37,7 @@ from .const import (
 from .coordinator import (
     FleetData,
     FleetInventoryCoordinator,
+    FleetInventoryData,
     FleetSummaryCoordinator,
 )
 from .entity import (
@@ -44,6 +46,7 @@ from .entity import (
     FleetInventoryEntity,
     FleetLabelEntity,
     FleetPolicyEntity,
+    async_setup_dynamic_entities,
     async_setup_dynamic_host_entities,
     async_setup_dynamic_label_entities,
     async_setup_dynamic_policy_entities,
@@ -66,6 +69,7 @@ HOST_DISK_PERCENT_KEY = "disk_free_percent"
 HOST_DISK_GIGS_KEY = "disk_free_gigs"
 HOST_OSQUERY_KEY = "osquery_version"
 HOST_MDM_KEY = "mdm_status"
+HOSTS_UNENCRYPTED_KEY = "hosts_unencrypted"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -182,6 +186,20 @@ async def async_setup_entry(
 
     async_add_entities([FleetOsVersionsSensor(inventory, entry)])
 
+    # A single fleet-wide entity, but created the same way as the per-object
+    # ones: only once the server reports disk encryption in its host list
+    # (Fleet 4.93+), so it appears by itself after a Fleet upgrade.
+    async_setup_dynamic_entities(
+        hass,
+        entry,
+        inventory,
+        async_add_entities,
+        Platform.SENSOR,
+        _disk_encryption_reported,
+        lambda _: fleet_unique_id(entry.entry_id, HOSTS_UNENCRYPTED_KEY),
+        lambda _: FleetHostsUnencryptedSensor(inventory, entry),
+    )
+
     if entry.options.get(CONF_WEBHOOKS, DEFAULT_WEBHOOKS):
         async_add_entities([FleetLastWebhookSensor(entry)])
 
@@ -216,6 +234,11 @@ def _build_host_sensor(
 
 class FleetSummarySensor(FleetEntity, SensorEntity):
     """A fleet-level count sensor."""
+
+    # The failing policy list can run to hundreds of entries. It is for display
+    # and templates, not history, and recording it on every change bloats the
+    # database or trips the recorder's attribute size limit.
+    _unrecorded_attributes = frozenset({"policies"})
 
     entity_description: FleetSensorEntityDescription
 
@@ -278,6 +301,8 @@ class FleetPolicyFailingSensor(FleetPolicyEntity, SensorEntity):
 
 class FleetVulnerableSoftwareSensor(FleetInventoryEntity, SensorEntity):
     """Count of software titles with known vulnerabilities across the fleet."""
+
+    _unrecorded_attributes = frozenset({"most_widespread"})
 
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UNIT_TITLES
@@ -452,6 +477,8 @@ class FleetOsVersionsSensor(FleetInventoryEntity, SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UNIT_HOSTS
     _attr_translation_key = "os_versions_vulnerable"
+    # One entry per OS build in the fleet, which has no natural bound.
+    _unrecorded_attributes = frozenset({"versions"})
 
     def __init__(
         self, coordinator: FleetInventoryCoordinator, entry: FleetConfigEntry
@@ -687,4 +714,56 @@ class FleetLastWebhookSensor(RestoreSensor):
         return {
             "last_kind": status.last_kind,
             "deliveries_since_start": dict(status.counts),
+        }
+
+
+def _disk_encryption_reported(data: FleetInventoryData) -> set[int]:
+    """Return a single placeholder ID when any host reports disk encryption."""
+    return {0} if any(h.disk_encryption_reported for h in data.hosts) else set()
+
+
+class FleetHostsUnencryptedSensor(FleetInventoryEntity, SensorEntity):
+    """How many hosts report their disk as not encrypted.
+
+    The fleet-wide view, so it works however large the fleet is and whether or
+    not per-host entities are on. Hosts that do not report encryption at all
+    are counted separately rather than assumed either way.
+    """
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UNIT_HOSTS
+    _attr_translation_key = "hosts_unencrypted"
+    _unrecorded_attributes = frozenset({"hosts"})
+
+    def __init__(
+        self, coordinator: FleetInventoryCoordinator, entry: FleetConfigEntry
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = fleet_unique_id(entry.entry_id, HOSTS_UNENCRYPTED_KEY)
+
+    def _unencrypted(self) -> list[FleetHost]:
+        return [
+            host
+            for host in self.coordinator.data.hosts
+            if host.disk_encryption_enabled is False
+        ]
+
+    @property
+    @override
+    def native_value(self) -> StateType:
+        """Return the number of hosts reporting an unencrypted disk."""
+        return len(self._unencrypted())
+
+    @property
+    @override
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Name the unencrypted hosts, and count those that do not say."""
+        return {
+            "hosts": sorted(host.display_name for host in self._unencrypted()),
+            "unknown_count": sum(
+                1
+                for host in self.coordinator.data.hosts
+                if host.disk_encryption_enabled is None
+            ),
         }

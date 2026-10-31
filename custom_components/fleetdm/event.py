@@ -13,7 +13,7 @@ from the bus.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import override
+from typing import Any, override
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
@@ -71,6 +71,9 @@ class FleetEventEntity(FleetEntity, EventEntity):
         super().__init__(coordinator, entry)
         self._inventory = inventory
         self._attr_unique_id = fleet_unique_id(entry.entry_id, "events")
+        # The snapshot whose events were last replayed, per coordinator. See
+        # _replay_new for why identity matters here.
+        self._replayed: dict[str, Any] = {}
 
     @property
     @override
@@ -88,6 +91,12 @@ class FleetEventEntity(FleetEntity, EventEntity):
     async def async_added_to_hass(self) -> None:
         """Subscribe to the inventory coordinator and to webhook deliveries."""
         await super().async_added_to_hass()
+        # Events from the cycles before this entity existed already went out
+        # on the bus; only cycles from here on belong on its timeline.
+        self._replayed = {
+            "summary": self.coordinator.data,
+            "inventory": self._inventory.data,
+        }
         self.async_on_remove(
             self._inventory.async_add_listener(self._handle_inventory_update)
         )
@@ -108,19 +117,36 @@ class FleetEventEntity(FleetEntity, EventEntity):
     @override
     def _handle_coordinator_update(self) -> None:
         """Replay this cycle's policy drift events onto the entity."""
-        if (data := self.coordinator.data) is not None:
-            self._replay(data.events)
+        self._replay_new("summary", self.coordinator)
         super()._handle_coordinator_update()
 
     @callback
     def _handle_inventory_update(self) -> None:
         """Replay this cycle's host events onto the entity."""
-        if (data := self._inventory.data) is not None:
-            self._replay(data.events)
+        self._replay_new("inventory", self._inventory)
         # Write state even when there were no events: availability depends on
         # this coordinator, and a cycle that merely failed produces no events to
         # write on its behalf.
         self.async_write_ha_state()
+
+    @callback
+    def _replay_new(
+        self,
+        source: str,
+        coordinator: FleetSummaryCoordinator | FleetInventoryCoordinator,
+    ) -> None:
+        """Replay a cycle's events, once, and only from a successful refresh.
+
+        Coordinators also notify listeners when a refresh fails, and then their
+        data is still the previous successful cycle. Replaying on every
+        notification fired that cycle's events a second time whenever Fleet was
+        briefly unreachable.
+        """
+        data = coordinator.data
+        if not coordinator.last_update_success or data is self._replayed.get(source):
+            return
+        self._replayed[source] = data
+        self._replay(data.events)
 
     @callback
     def _replay(self, events: Iterable[FleetDriftEvent]) -> None:

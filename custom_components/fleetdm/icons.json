@@ -51,6 +51,9 @@
       },
       "last_webhook": {
         "default": "mdi:webhook"
+      },
+      "hosts_unencrypted": {
+        "default": "mdi:lock-open-alert-outline"
       }
     },
     "binary_sensor": {
@@ -68,6 +71,12 @@
       },
       "host_missing": {
         "default": "mdi:map-marker-question-outline"
+      },
+      "host_disk_encryption": {
+        "default": "mdi:lock-open-alert-outline",
+        "state": {
+          "on": "mdi:lock-check-outline"
+        }
       }
     },
     "event": {

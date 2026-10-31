@@ -27,9 +27,14 @@ from .const import (
     STORAGE_KEY_TEMPLATE,
     STORAGE_VERSION,
 )
-from .coordinator import FleetInventoryCoordinator, FleetSummaryCoordinator
+from .coordinator import (
+    FleetInventoryCoordinator,
+    FleetSummaryCoordinator,
+    per_host_entities_enabled,
+)
 from .entity import (
     async_setup_host_device_sync,
+    async_setup_hub_device_sync,
     host_id_from_identifiers,
     hub_device_info,
 )
@@ -83,6 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FleetConfigEntry) -> boo
     )
 
     async_setup_host_device_sync(hass, entry, inventory)
+    async_setup_hub_device_sync(hass, entry, summary, hub.id)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
@@ -119,16 +125,19 @@ async def async_remove_config_entry_device(
     entry: FleetConfigEntry,
     device: dr.DeviceEntry,
 ) -> bool:
-    """Allow deleting a host device from the UI once Fleet has dropped it.
+    """Allow deleting a host device from the UI once nothing will recreate it.
 
-    Refuses while the host still exists, since the device would simply be
-    recreated on the next refresh, and refuses for the hub device, which
-    belongs to the config entry itself.
+    That is when Fleet has dropped the host, or per-host entities are off.
+    Refuses while the device would simply be recreated on the next refresh,
+    and always for the hub device, which belongs to the config entry itself.
     """
     host_id = host_id_from_identifiers(entry.entry_id, device.identifiers)
     if host_id is None:
         return False
-    return host_id not in entry.runtime_data.inventory.data.hosts_by_id
+    hosts = entry.runtime_data.inventory.data.hosts_by_id
+    if not per_host_entities_enabled(entry, len(hosts)):
+        return True
+    return host_id not in hosts
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: FleetConfigEntry) -> bool:
