@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-30
+
 The first release since Fleet joined the HACS default store: disk encryption,
 ready-made automations, and fixes from a full review of the integration.
 
@@ -326,7 +328,8 @@ First release. Fleet-level monitoring and per-policy compliance, read-only.
   tier, with the drift baseline seeding silently rather than firing an event
   for each of the 23 already-failing policies
 
-[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/breed007/ha-fleetdm/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/breed007/ha-fleetdm/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/breed007/ha-fleetdm/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/breed007/ha-fleetdm/compare/v0.3.0...v0.4.0
