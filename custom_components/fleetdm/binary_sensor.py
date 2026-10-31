@@ -33,6 +33,7 @@ PARALLEL_UPDATES = 0
 POLICY_COMPLIANCE_KEY = "compliance"
 HOST_ONLINE_KEY = "online"
 HOST_MISSING_KEY = "missing"
+HOST_DISK_ENCRYPTION_KEY = "disk_encryption"
 
 
 async def async_setup_entry(
@@ -70,6 +71,20 @@ async def async_setup_entry(
             partial(_build, factory, inventory, entry),
         )
 
+    # Only where the server reports it, which is Fleet 4.93 and later. On an
+    # older server no entity is created, rather than one stuck on unknown; the
+    # entities appear by themselves once Fleet is upgraded.
+    async_setup_dynamic_host_entities(
+        hass,
+        entry,
+        inventory,
+        async_add_entities,
+        Platform.BINARY_SENSOR,
+        HOST_DISK_ENCRYPTION_KEY,
+        partial(_build, FleetHostDiskEncryptionBinarySensor, inventory, entry),
+        include=lambda host: host.disk_encryption_reported,
+    )
+
 
 def _build(
     factory: Callable[
@@ -88,6 +103,7 @@ class FleetComplianceBinarySensor(FleetEntity, BinarySensorEntity):
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
     _attr_translation_key = "compliance"
+    _unrecorded_attributes = frozenset({"triggering_policies"})
 
     def __init__(
         self, coordinator: FleetSummaryCoordinator, entry: FleetConfigEntry
@@ -223,3 +239,32 @@ class FleetHostMissingBinarySensor(FleetHostBinarySensorBase):
         # Shared with the coordinator's event logic, so the sensor and the
         # host-missing event can never disagree about what "missing" means.
         return host.is_missing_at(dt_util.utcnow() - self.coordinator.missing_after)
+
+
+class FleetHostDiskEncryptionBinarySensor(FleetHostEntity, BinarySensorEntity):
+    """Whether a host's disk is encrypted: FileVault, BitLocker or LUKS.
+
+    On means encrypted. Deliberately not a problem-class sensor, whose on state
+    means something is wrong, so the state reads naturally on the device page.
+    Unknown when the host does not report it, for example a platform Fleet
+    cannot check.
+    """
+
+    _attr_translation_key = "host_disk_encryption"
+
+    def __init__(
+        self,
+        coordinator: FleetInventoryCoordinator,
+        entry: FleetConfigEntry,
+        host_id: int,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, host_id, HOST_DISK_ENCRYPTION_KEY)
+
+    @property
+    @override
+    def is_on(self) -> bool | None:
+        """Whether the disk is encrypted."""
+        if (host := self.host) is None:
+            return None
+        return host.disk_encryption_enabled

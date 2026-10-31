@@ -481,7 +481,9 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
             self._missing_host_ids = {
                 int(host_id) for host_id in stored.get("missing_host_ids", [])
             }
-            self._matcher.restore(stored.get("activity_sightings"))
+            self._matcher.restore(
+                stored.get("activity_sightings"), stored.get("last_webhook_activity_at")
+            )
             self._has_baseline = True
 
     @override
@@ -551,25 +553,23 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         events: list[FleetDriftEvent] = []
         by_id = {host.id: host for host in hosts}
 
-        matched = False
+        matcher_revision = self._matcher.revision
         for activity in sorted(activities, key=lambda a: a.id):
             if (event := self._activity_event(activity, activity.id)) is None:
                 continue
-            if self.webhooks_enabled:
-                matched = True
-                if not self._matcher.claim(
-                    EVENT_SOURCE_POLL,
+            if self.webhooks_enabled and not self._matcher.claim(
+                EVENT_SOURCE_POLL,
+                activity.type,
+                activity.created_at,
+                activity.details,
+            ):
+                _LOGGER.debug(
+                    "Activity %s (%s, %s) already delivered by webhook",
+                    activity.id,
                     activity.type,
                     activity.created_at,
-                    activity.details,
-                ):
-                    _LOGGER.debug(
-                        "Activity %s (%s, %s) already delivered by webhook",
-                        activity.id,
-                        activity.type,
-                        activity.created_at,
-                    )
-                    continue
+                )
+                continue
             events.append(event)
 
         # Only hosts still present in Fleet: one deleted while missing is gone,
@@ -584,7 +584,7 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
         ]
 
         changed = (
-            matched
+            self._matcher.revision != matcher_revision
             or (
                 newest_activity is not None
                 and newest_activity != self._last_activity_id
@@ -653,6 +653,11 @@ class FleetInventoryCoordinator(DataUpdateCoordinator[FleetInventoryData]):
             "last_activity_id": self._last_activity_id,
             "missing_host_ids": sorted(self._missing_host_ids),
             "activity_sightings": self._matcher.as_json(),
+            "last_webhook_activity_at": (
+                self._matcher.last_webhook_at.isoformat()
+                if self._matcher.last_webhook_at
+                else None
+            ),
         }
 
     async def _async_save(self) -> None:

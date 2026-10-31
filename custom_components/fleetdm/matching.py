@@ -18,10 +18,17 @@ from typing import Any
 
 from homeassistant.util import dt as dt_util
 
+from .const import EVENT_SOURCE_WEBHOOK
+
 # How far apart the two reports of one activity's timestamp may be. Fleet sends
 # the webhook and stores the row with the same timestamp, but the database may
 # round it to a precision the webhook's JSON does not.
 TIMESTAMP_TOLERANCE = timedelta(seconds=2)
+
+
+# Bound on unmatched sightings, oldest dropped first. Generous for any real
+# fleet's activity within the retention window, and it keeps matching cheap.
+MAX_PENDING = 5000
 
 
 def activity_key(activity_type: str, details: dict[str, Any]) -> str:
@@ -60,6 +67,28 @@ class ActivityMatcher:
         """
         self._retention = retention
         self._pending: list[_Sighting] = []
+        self._last_webhook_at: datetime | None = None
+        # Bumped on every change, so the owner can tell whether to persist.
+        self.revision = 0
+
+    @property
+    def last_webhook_at(self) -> datetime | None:
+        """When the webhook last delivered an activity, if ever."""
+        return self._last_webhook_at
+
+    def _webhook_active(self, now: datetime) -> bool:
+        """Whether the webhook has delivered anything recently.
+
+        Poll sightings are always kept in memory, because the first webhook can
+        arrive after the poll has already seen its activity. But until webhooks
+        are actually arriving they are not worth persisting: with webhooks
+        switched on in Home Assistant and Fleet never pointed at the URL, saving
+        them would rewrite the store on every poll for nothing.
+        """
+        return (
+            self._last_webhook_at is not None
+            and now - self._last_webhook_at <= self._retention
+        )
 
     def claim(
         self,
@@ -77,6 +106,9 @@ class ActivityMatcher:
         now = dt_util.utcnow()
         self._expire(now)
         key = activity_key(activity_type, details)
+        if source == EVENT_SOURCE_WEBHOOK:
+            self._last_webhook_at = now
+            self.revision += 1
 
         for index, sighting in enumerate(self._pending):
             if (
@@ -85,14 +117,22 @@ class ActivityMatcher:
                 and _close(sighting.created_at, created_at)
             ):
                 del self._pending[index]
+                self.revision += 1
                 return False
 
         self._pending.append(_Sighting(source, key, created_at, now))
+        if len(self._pending) > MAX_PENDING:
+            del self._pending[: len(self._pending) - MAX_PENDING]
+        if source == EVENT_SOURCE_WEBHOOK or self._webhook_active(now):
+            self.revision += 1
         return True
 
     def _expire(self, now: datetime) -> None:
         cutoff = now - self._retention
-        self._pending = [s for s in self._pending if s.recorded_at >= cutoff]
+        kept = [s for s in self._pending if s.recorded_at >= cutoff]
+        if len(kept) != len(self._pending):
+            self._pending = kept
+            self.revision += 1
 
     def as_json(self) -> list[list[str | None]]:
         """Serialize pending sightings for the coordinator's store."""
@@ -106,13 +146,19 @@ class ActivityMatcher:
             for s in self._pending
         ]
 
-    def restore(self, stored: Any) -> None:
+    def restore(self, stored: Any, last_webhook_at: Any = None) -> None:
         """Load sightings saved before a restart, skipping anything malformed.
 
         Without this, an activity pushed just before Home Assistant restarted
         would fire again when the first poll after the restart reads it.
         """
         self._pending = []
+        try:
+            self._last_webhook_at = (
+                datetime.fromisoformat(last_webhook_at) if last_webhook_at else None
+            )
+        except (TypeError, ValueError):
+            self._last_webhook_at = None
         if not isinstance(stored, list):
             return
         for item in stored:

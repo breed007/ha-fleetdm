@@ -324,12 +324,18 @@ def async_setup_host_device_sync(
 
     Registered once per config entry rather than per platform, so four platforms
     do not each redo the same work.
+
+    Host devices are also removed when per-host entities are switched off, by
+    the option or by a fleet growing past the size threshold. Their entities go
+    in that case, and a device with no entities and no way to delete it from the
+    UI is clutter.
     """
 
     @callback
     def _sync_devices() -> None:
         registry = dr.async_get(hass)
         hosts = coordinator.data.hosts_by_id
+        keep_hosts = per_host_entities_enabled(entry, len(hosts))
 
         for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
             host_id = host_id_from_identifiers(entry.entry_id, device.identifiers)
@@ -337,10 +343,10 @@ def async_setup_host_device_sync(
                 # The hub device, which lives as long as the config entry.
                 continue
 
-            host = hosts.get(host_id)
+            host = hosts.get(host_id) if keep_hosts else None
             if host is None:
-                # Gone from Fleet. Detaching the config entry deletes the device
-                # when no other entry claims it.
+                # Gone from Fleet, or per-host entities are off. Detaching the
+                # config entry deletes the device when no other entry claims it.
                 registry.async_update_device(
                     device.id, remove_config_entry_id=entry.entry_id
                 )
@@ -360,6 +366,37 @@ def async_setup_host_device_sync(
 
     entry.async_on_unload(coordinator.async_add_listener(_sync_devices))
     _sync_devices()
+
+
+@callback
+def async_setup_hub_device_sync(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: FleetSummaryCoordinator,
+    hub_device_id: str,
+) -> None:
+    """Keep the hub device's software version in step with the Fleet server.
+
+    The coordinator re-reads the version periodically, but the device registry
+    only learns it from device info at setup, so a Fleet upgrade otherwise
+    showed the old version until Home Assistant restarted.
+    """
+
+    @callback
+    def _sync_version() -> None:
+        version = coordinator.version.get("version")
+        registry = dr.async_get(hass)
+        device = registry.async_get(hub_device_id)
+        # Narrowed by type: 2026.10 can also return a child device, which has
+        # no software version of its own.
+        if (
+            version
+            and isinstance(device, dr.DeviceEntry)
+            and device.sw_version != version
+        ):
+            registry.async_update_device(hub_device_id, sw_version=version)
+
+    entry.async_on_unload(coordinator.async_add_listener(_sync_version))
 
 
 def _host_model(host: FleetHost | None) -> str | None:
@@ -421,18 +458,20 @@ def async_setup_dynamic_host_entities(
     platform: str,
     key: str,
     factory: Callable[[int], Entity],
+    include: Callable[[FleetHost], bool] | None = None,
 ) -> None:
     """Track hosts as they enroll in and leave Fleet.
 
     The size gate is applied here rather than once at platform setup, so a
     fleet that grows past the threshold stops gaining per-host entities instead
-    of quietly continuing to add them.
+    of quietly continuing to add them. ``include`` narrows it further, for an
+    entity that only some hosts or Fleet versions can support.
     """
 
     def _gated_host_ids(data: FleetInventoryData) -> set[int]:
         if not per_host_entities_enabled(entry, len(data.hosts)):
             return set()
-        return set(data.hosts_by_id)
+        return {host.id for host in data.hosts if include is None or include(host)}
 
     async_setup_dynamic_entities(
         hass,
