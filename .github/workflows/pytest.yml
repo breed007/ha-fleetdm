@@ -20,11 +20,11 @@ jobs:
         # The oldest row must match the `homeassistant` floor in hacs.json —
         # that is what verifies the compatibility claim made to users.
         include:
+          - ha-version: "2026.10"
+            phcc: "0.13.375"
+            python-version: "3.14"
           - ha-version: "2026.9"
             phcc: "0.13.366"
-            python-version: "3.14"
-          - ha-version: "2026.8"
-            phcc: "0.13.354"
             python-version: "3.14"
           - ha-version: "2025.2"
             phcc: "0.13.210"
@@ -54,7 +54,7 @@ jobs:
             --cov-report=xml
 
       - name: Enforce coverage floor
-        if: matrix.ha-version == '2026.9'
+        if: matrix.ha-version == '2026.10'
         run: |
           pip install coverage
           coverage report --fail-under=85
@@ -81,5 +81,5 @@ jobs:
           python-version: "3.14"
       # Type-checked against the newest Home Assistant in the test matrix, whose
       # type hints are what the integration has to satisfy going forward.
-      - run: pip install "pytest-homeassistant-custom-component==0.13.366" mypy==2.3.1
+      - run: pip install "pytest-homeassistant-custom-component==0.13.375" mypy==2.3.1
       - run: mypy

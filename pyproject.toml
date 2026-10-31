@@ -31,7 +31,9 @@ asyncio_mode = "auto"
 
 # Mirrors the settings Home Assistant core applies to integrations on its
 # strict-typing list, minus options that only matter inside the core repo
-# (its stubs directory, pydantic plugin and worker count).
+# (its stubs directory, pydantic plugin and worker count) and core's
+# no_implicit_reexport for its own modules: that governs how core writes its
+# imports, and failing ours on it would break CI whenever core moves a name.
 [tool.mypy]
 python_version = "3.14"
 files = ["custom_components/fleetdm"]
@@ -52,4 +54,4 @@ disable_error_code = ["annotation-unchecked", "import-not-found", "import-untype
 
 [[tool.mypy.overrides]]
 module = "homeassistant.*"
-no_implicit_reexport = true
+implicit_reexport = true
