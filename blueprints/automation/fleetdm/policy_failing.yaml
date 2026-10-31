@@ -1,0 +1,48 @@
+blueprint:
+  name: "Fleet: a policy started failing"
+  description: >-
+    Run actions when a Fleet policy goes from passing on every host to failing
+    on at least one. Fires once per transition, not on every poll, and not for
+    policies that were already failing when the integration was added.
+
+
+    Event data you can use in the actions:
+    `{{ trigger.event.data.policy_name }}`,
+    `{{ trigger.event.data.failing_host_count }}`,
+    `{{ trigger.event.data.resolution }}`,
+    `{{ trigger.event.data.critical }}` and `{{ trigger.event.data.platform }}`.
+  domain: automation
+  author: breed007
+  source_url: https://github.com/breed007/ha-fleetdm/blob/main/blueprints/automation/fleetdm/policy_failing.yaml
+  homeassistant:
+    min_version: "2025.2.0"
+  input:
+    critical_only:
+      name: Only critical policies
+      description: >-
+        Only react to policies marked critical. That flag is Fleet Premium only,
+        so on Fleet Free leave this off or nothing will ever fire.
+      default: false
+      selector:
+        boolean: {}
+    actions:
+      name: Actions
+      description: What to do, for example send a notification.
+      selector:
+        action: {}
+
+mode: queued
+max: 25
+
+triggers:
+  - trigger: event
+    event_type: fleetdm_policy_failing
+
+variables:
+  critical_only: !input critical_only
+
+conditions:
+  - condition: template
+    value_template: "{{ not critical_only or trigger.event.data.critical }}"
+
+actions: !input actions

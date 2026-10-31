@@ -1,0 +1,33 @@
+blueprint:
+  name: "Fleet: a host went missing"
+  description: >-
+    Run actions when a Fleet host has not checked in for longer than the window
+    set in the Fleet integration's options (24 hours by default). Fires once
+    when the host crosses the threshold, not repeatedly while it stays missing.
+
+
+    Event data you can use in the actions:
+    `{{ trigger.event.data.host_name }}`,
+    `{{ trigger.event.data.unseen_hours }}`,
+    `{{ trigger.event.data.last_seen }}`,
+    `{{ trigger.event.data.platform }}` and `{{ trigger.event.data.os_version }}`.
+  domain: automation
+  author: breed007
+  source_url: https://github.com/breed007/ha-fleetdm/blob/main/blueprints/automation/fleetdm/host_missing.yaml
+  homeassistant:
+    min_version: "2025.2.0"
+  input:
+    actions:
+      name: Actions
+      description: What to do, for example send a notification.
+      selector:
+        action: {}
+
+mode: queued
+max: 25
+
+triggers:
+  - trigger: event
+    event_type: fleetdm_host_missing
+
+actions: !input actions
