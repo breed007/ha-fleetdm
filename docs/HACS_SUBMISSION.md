@@ -1,5 +1,10 @@
 # Publishing to HACS
 
+> **Done.** Fleet has been in the HACS default store since 2026-10-18
+> ([hacs/default#9825](https://github.com/hacs/default/pull/9825)). New releases
+> reach HACS users once they are published here; nothing further is submitted.
+> The rest of this page is kept as a record of how it got there.
+
 Two separate things, in this order:
 
 1. **Ship a release** so people can install via a custom repository. Works

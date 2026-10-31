@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The first release since Fleet joined the HACS default store: disk encryption,
+ready-made automations, and fixes from a full review of the integration.
+
+### Added
+
+- **Disk encryption.** A per-host `Disk encryption` binary sensor (on means
+  FileVault, BitLocker or LUKS is on) and a fleet-wide
+  `sensor.fleet_hosts_without_disk_encryption` that names the unencrypted
+  hosts and works however large the fleet. Needs Fleet 4.93 or later, which
+  added the field to the host list already being read, so it costs no extra
+  requests. On older servers the entities are not created, and they appear by
+  themselves after a Fleet upgrade.
+- **Blueprints** for a policy starting to fail, a host going missing, a new
+  host enrolling and an unencrypted disk, each importable with one click from
+  the README.
+
+### Fixed
+
+- **The event entity re-fired the previous poll's events after a failed
+  poll.** Home Assistant notifies listeners when a refresh fails, while the
+  data is still the last successful cycle's, and the entity replayed it. A
+  brief Fleet outage could put a policy-failing event on the timeline twice
+  and re-trigger automations watching the entity. The bus events automations
+  normally use were not affected.
+- **The hub device kept showing the old Fleet version after an upgrade** until
+  Home Assistant restarted. The version was re-read hourly but never written
+  back to the device.
+- **Host devices were left behind, empty and undeletable**, when per-host
+  entities were switched off or a fleet grew past the 50-host threshold. They
+  are now removed with their entities, and can be deleted from the UI.
+- A Fleet URL that answers with an HTML page, such as a login page or a proxy
+  error, was reported as "Fleet returned HTTP 200". It is now an unexpected
+  response, with the hint to check the URL.
+- One malformed entry in a Fleet list, such as a host without an ID, took the
+  whole list down with an untranslated error. It is now skipped.
+- With webhooks on but Fleet never posting to them, every poll rewrote the
+  store to keep activities for matching. They are now kept in memory until
+  webhooks actually arrive, and capped.
+
+### Changed
+
+- Long list attributes (failing policies, OS versions, vulnerable titles,
+  unencrypted hosts) are no longer written to the recorder, so a large fleet
+  does not bloat the database or trip its attribute size limit. They are still
+  on the entities for display and templates.
+- README updated for the HACS default store: no custom repository to add.
+- CI tests against Home Assistant 2026.10, 2026.9 and the 2025.2 minimum, and
+  type-checks against 2026.10, which moved flow schemas from voluptuous to
+  probatio.
+
 ## [0.6.0] - 2026-09-25
 
 Fleet can now push to Home Assistant instead of waiting to be polled. It is
