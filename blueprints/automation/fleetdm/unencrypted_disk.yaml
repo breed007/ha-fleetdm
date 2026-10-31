@@ -1,0 +1,38 @@
+blueprint:
+  name: "Fleet: a host's disk is not encrypted"
+  description: >-
+    Run actions when the number of hosts reporting an unencrypted disk rises
+    above zero. Needs Fleet 4.93 or later, which reports disk encryption in its
+    host list; on older servers the sensor does not exist.
+
+
+    Use `{{ state_attr(trigger.entity_id, 'hosts') | join(', ') }}` in the
+    actions to name the hosts.
+  domain: automation
+  author: breed007
+  source_url: https://github.com/breed007/ha-fleetdm/blob/main/blueprints/automation/fleetdm/unencrypted_disk.yaml
+  homeassistant:
+    min_version: "2025.2.0"
+  input:
+    sensor:
+      name: Unencrypted hosts sensor
+      description: The Fleet integration's "Hosts without disk encryption" sensor.
+      selector:
+        entity:
+          filter:
+            - integration: fleetdm
+              domain: sensor
+    actions:
+      name: Actions
+      description: What to do, for example send a notification.
+      selector:
+        action: {}
+
+mode: single
+
+triggers:
+  - trigger: numeric_state
+    entity_id: !input sensor
+    above: 0
+
+actions: !input actions

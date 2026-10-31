@@ -1,0 +1,33 @@
+blueprint:
+  name: "Fleet: a new host enrolled"
+  description: >-
+    Run actions when a host enrolls in Fleet. With the integration's webhooks
+    turned on this arrives within seconds; otherwise within one inventory
+    interval. An unexpected enrollment is worth knowing about.
+
+
+    Event data you can use in the actions:
+    `{{ trigger.event.data.host_name }}`,
+    `{{ trigger.event.data.host_serial }}`,
+    `{{ trigger.event.data.enrolled_at }}` and
+    `{{ trigger.event.data.source }}` (`poll` or `webhook`).
+  domain: automation
+  author: breed007
+  source_url: https://github.com/breed007/ha-fleetdm/blob/main/blueprints/automation/fleetdm/host_enrolled.yaml
+  homeassistant:
+    min_version: "2025.2.0"
+  input:
+    actions:
+      name: Actions
+      description: What to do, for example send a notification.
+      selector:
+        action: {}
+
+mode: queued
+max: 25
+
+triggers:
+  - trigger: event
+    event_type: fleetdm_host_enrolled
+
+actions: !input actions
