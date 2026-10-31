@@ -6,7 +6,13 @@ import logging
 from typing import Any, override
 from urllib.parse import urlsplit
 
-import voluptuous as vol
+# Home Assistant 2026.10 replaced voluptuous with probatio, an API-compatible
+# successor, and types flow schemas against it. Older releases only have
+# voluptuous, so use whichever this version ships.
+try:
+    import probatio as vol
+except ImportError:  # Home Assistant before 2026.10
+    import voluptuous as vol  # type: ignore[no-redef]
 from homeassistant.components import webhook
 from homeassistant.config_entries import (
     ConfigEntry,
