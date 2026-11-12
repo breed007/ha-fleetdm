@@ -198,9 +198,10 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error validating Fleet connection")
                 errors["base"] = "unknown"
             else:
-                return self.async_update_reload_and_abort(
+                return self._async_update_and_finish(
                     reauth_entry,
-                    data_updates={CONF_API_TOKEN: user_input[CONF_API_TOKEN]},
+                    {CONF_API_TOKEN: user_input[CONF_API_TOKEN]},
+                    "reauth_successful",
                 )
 
         return self.async_show_form(
@@ -243,8 +244,10 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
                 # Repointing an existing entry at a different Fleet server would
                 # silently orphan its entities and drift history.
                 self._abort_if_unique_id_mismatch(reason="wrong_server")
-                return self.async_update_reload_and_abort(
-                    entry, data_updates={**user_input, CONF_URL: base_url}
+                return self._async_update_and_finish(
+                    entry,
+                    {**user_input, CONF_URL: base_url},
+                    "reconfigure_successful",
                 )
 
         return self.async_show_form(
@@ -261,6 +264,25 @@ class FleetConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+    @callback
+    def _async_update_and_finish(
+        self, entry: ConfigEntry, data_updates: dict[str, Any], reason: str
+    ) -> ConfigFlowResult:
+        """Save new connection details and reload the entry exactly once.
+
+        A loaded entry has an update listener that reloads it on any change, so
+        async_update_reload_and_abort reloaded it twice, and Home Assistant
+        2026.11 warns about that combination ahead of changing it in 2026.12.
+        An entry whose setup failed, such as on the rejected token that started
+        this reauth, never registered the listener, so it is reloaded here.
+        """
+        self.hass.config_entries.async_update_entry(
+            entry, data={**entry.data, **data_updates}
+        )
+        if not entry.update_listeners:
+            self.hass.config_entries.async_schedule_reload(entry.entry_id)
+        return self.async_abort(reason=reason)
 
     @staticmethod
     @callback
