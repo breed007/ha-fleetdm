@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-12
+
+Keeps the integration clean on Home Assistant 2026.11 and ready for 2026.12.
+No functional changes otherwise.
+
+### Fixed
+
+- **Re-authentication and reconfiguring reloaded the integration twice.** Both
+  flows asked Home Assistant to reload the entry, and the integration's own
+  update listener reloaded it again. Home Assistant 2026.11 logs a deprecation
+  warning for this combination ahead of changing it in 2026.12. The flows now
+  save the new details and let the listener do the one reload, and still
+  reload an entry themselves when its setup had failed, such as on the
+  rejected token that started a reauth.
+
+### Changed
+
+- Type-checks cleanly against Home Assistant 2026.11, which turned
+  `DeviceInfo` from a TypedDict into a class.
+
 ## [0.7.0] - 2026-10-30
 
 The first release since Fleet joined the HACS default store: disk encryption,
@@ -328,7 +348,8 @@ First release. Fleet-level monitoring and per-policy compliance, read-only.
   tier, with the drift baseline seeding silently rather than firing an event
   for each of the 23 already-failing policies
 
-[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/breed007/ha-fleetdm/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/breed007/ha-fleetdm/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/breed007/ha-fleetdm/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/breed007/ha-fleetdm/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/breed007/ha-fleetdm/compare/v0.4.0...v0.5.0
