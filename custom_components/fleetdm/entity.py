@@ -266,7 +266,9 @@ class FleetHostEntity(CoordinatorEntity[FleetInventoryCoordinator]):
         if _LINK_BY_DEVICE_ID:
             device_info["via_device_id"] = entry.runtime_data.hub_device_id
         else:
-            device_info["via_device"] = (DOMAIN, entry.entry_id)  # type: ignore[typeddict-unknown-key]
+            # A TypedDict before 2026.11, which rejects the key it no longer
+            # declares; a class from 2026.11, which still accepts it.
+            device_info["via_device"] = (DOMAIN, entry.entry_id)  # type: ignore[typeddict-unknown-key,unused-ignore]
         self._attr_device_info = device_info
 
     @property
